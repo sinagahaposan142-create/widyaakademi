@@ -33,10 +33,23 @@
     toastTimer = setTimeout(() => (t.className = 'toast'), 2800);
   }
 
+  // ---- Token storage (fallback bila cookie diblokir hosting/browser) ----
+  const TOKEN_KEY = 'widya_admin_token';
+  const getToken = () => {
+    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  };
+  const setToken = (t) => {
+    try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {}
+  };
+
   // ---- API helper ----
   async function api(url, opts = {}) {
-    const res = await fetch(url, { credentials: 'same-origin', ...opts });
+    const headers = { ...(opts.headers || {}) };
+    const token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(url, { credentials: 'same-origin', ...opts, headers });
     if (res.status === 401) {
+      setToken(null);
       showLogin();
       throw new Error('unauthorized');
     }
@@ -61,11 +74,16 @@
     loadRegistrations();
   }
 
-  // check session
-  fetch('/api/auth/me', { credentials: 'same-origin' })
-    .then((r) => (r.ok ? r.json() : Promise.reject()))
-    .then((d) => showApp(d.admin))
-    .catch(() => showLogin());
+  // check session (kirim token bila ada)
+  (function checkSession() {
+    const headers = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    fetch('/api/auth/me', { credentials: 'same-origin', headers })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => showApp(d.admin))
+      .catch(() => showLogin());
+  })();
 
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -90,6 +108,7 @@
         alert.classList.add('show');
         return;
       }
+      if (data.token) setToken(data.token);
       showApp(data.admin);
     } catch {
       alert.textContent = 'Gagal terhubung ke server.';
@@ -101,7 +120,8 @@
   });
 
   $('#logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
+    setToken(null);
     showLogin();
   });
 
@@ -277,7 +297,7 @@
           <div class="k">Bukti Pembayaran</div>
           <div class="bukti-box" id="buktiBox">
             ${r.bukti_filename
-              ? `<img src="/api/admin/registrations/${r.id}/bukti?t=${Date.now()}" alt="Bukti pembayaran" onclick="window.open(this.src)" style="cursor:zoom-in" />`
+              ? '<div class="bukti-none"><span class="spinner dark"></span> Memuat bukti...</div>'
               : '<div class="bukti-none">Belum ada bukti pembayaran diunggah.</div>'}
           </div>
         </div>
@@ -303,6 +323,23 @@
         b.addEventListener('click', () => setStatus(r.id, b.dataset.set))
       );
       $('[data-delete]', body).addEventListener('click', () => deleteReg(r.id));
+
+      // Muat gambar bukti via fetch berautentikasi (mendukung cookie & Bearer token)
+      if (r.bukti_filename) {
+        api('/api/admin/registrations/' + r.id + '/bukti')
+          .then((res) => (res.ok ? res.blob() : Promise.reject()))
+          .then((blob) => {
+            const box = $('#buktiBox');
+            if (!box) return;
+            const objUrl = URL.createObjectURL(blob);
+            box.innerHTML = `<img src="${objUrl}" alt="Bukti pembayaran" style="cursor:zoom-in" />`;
+            box.querySelector('img').addEventListener('click', () => window.open(objUrl, '_blank'));
+          })
+          .catch(() => {
+            const box = $('#buktiBox');
+            if (box) box.innerHTML = '<div class="bukti-none">Gagal memuat bukti pembayaran.</div>';
+          });
+      }
     } catch {
       body.innerHTML = '<div class="empty">Gagal memuat detail.</div>';
     }

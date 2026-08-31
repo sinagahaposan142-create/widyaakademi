@@ -184,7 +184,13 @@ app.post('/api/auth/login', (req, res) => {
 
   const token = issueToken(admin);
   setAuthCookie(res, token);
-  res.json({ ok: true, admin: { username: admin.username, nama: admin.nama } });
+  // Token juga dikembalikan agar dashboard tetap berfungsi bila cookie diblokir
+  // oleh browser/hosting (fallback Authorization: Bearer).
+  res.json({
+    ok: true,
+    token,
+    admin: { username: admin.username, nama: admin.nama },
+  });
 });
 
 app.post('/api/auth/logout', (req, res) => {

@@ -29,7 +29,9 @@ Full-stack, ringan, tanpa langkah build — cukup `npm install` lalu `npm start`
 - Responsif penuh untuk **smartphone, tablet, dan laptop**.
 
 ### Dashboard Admin (`/admin`)
-- **Login** aman (password di-hash bcrypt, sesi JWT via cookie httpOnly).
+- **Login** aman (password di-hash bcrypt, sesi JWT via cookie httpOnly **+ fallback
+  token** di `localStorage`/`Authorization: Bearer` agar dashboard tetap berfungsi
+  walau cookie diblokir browser/hosting).
 - **Statistik**: total pendaftar, menunggu verifikasi, terverifikasi, kuota terisi.
 - **Tabel pendaftar** dengan pencarian, filter status, dan paginasi.
 - **Detail pendaftar** + melihat gambar bukti pembayaran.
@@ -132,9 +134,14 @@ widyaakademi/
 
 ## 📝 Catatan
 
+- **Backend wajib berjalan.** Dashboard admin dan pendaftaran membutuhkan server
+  Node.js aktif (`npm start`). Meng-host hanya folder `public/` sebagai situs statis
+  (tanpa server) akan membuat form & dashboard tidak berfungsi karena tidak ada API.
 - Data pendaftar & berkas tersimpan lokal (`data/` & `uploads/`). Untuk produksi,
   pertimbangkan backup berkala atau object storage terpisah.
 - Semua endpoint `/api/admin/*` diproteksi dan menolak akses tanpa sesi valid.
+- Autentikasi memakai cookie httpOnly **dan** fallback token (`Authorization: Bearer`),
+  sehingga tetap bekerja di berbagai konfigurasi hosting (mis. di balik proxy HTTPS).
 - Validasi dilakukan di sisi klien **dan** server.
 
 © Widya Nusantara Academy · Rubela UTBK Indonesia
