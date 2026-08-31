@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Admin — Widya Nusantara Academy</title>
+  <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b1f4d'/><text x='50' y='68' font-size='58' text-anchor='middle' fill='%23ffcf3d' font-family='Arial' font-weight='bold'>W</text></svg>" />
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div class="login-wrap" id="loginView">
+    <form class="login-card" id="loginForm">
+      <div class="brand">
+        <span class="logo">W</span>
+        <div><b style="color:var(--navy)">Widya Nusantara</b><br /><small style="color:var(--muted)">Academy</small></div>
+      </div>
+      <h1>Dashboard Admin</h1>
+      <p class="sub">Masuk untuk mengelola data pendaftar</p>
+      <div class="alert error" id="loginAlert"></div>
+      <div class="field">
+        <label>Username</label>
+        <input class="input" type="text" name="username" autocomplete="username" placeholder="admin" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input class="input" type="password" name="password" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Masuk</button>
+      <p style="text-align:center;margin-top:16px;font-size:.85rem"><a href="/" style="color:var(--blue)">← Kembali ke situs</a></p>
+    </form>
+  </div>
+
+  <!-- APP -->
+  <div class="admin-app" id="app">
+    <div class="topbar">
+      <div class="brand">
+        <span class="logo">W</span>
+        <div>Widya Admin<small>Rubela UTBK Indonesia</small></div>
+      </div>
+      <div class="right">
+        <span class="who" id="whoami"></span>
+        <a href="/" target="_blank">Lihat Situs ↗</a>
+        <button id="logoutBtn">Keluar</button>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="tabs">
+        <button class="tab active" data-tab="pendaftar">📋 Data Pendaftar</button>
+        <button class="tab" data-tab="qris">📱 QRIS & Pembayaran</button>
+        <button class="tab" data-tab="pengaturan">⚙️ Pengaturan</button>
+      </div>
+
+      <!-- PANEL: PENDAFTAR -->
+      <section class="panel active" id="panel-pendaftar">
+        <div class="stats" id="stats">
+          <div class="stat-card"><div class="label">Total Pendaftar</div><div class="value" id="stTotal">–</div></div>
+          <div class="stat-card"><div class="label">Menunggu Verifikasi</div><div class="value w" id="stWait">–</div></div>
+          <div class="stat-card"><div class="label">Terverifikasi</div><div class="value g" id="stOk">–</div></div>
+          <div class="stat-card"><div class="label">Kuota Terisi</div><div class="value" id="stKuota">–</div>
+            <div class="bar"><i id="stBar" style="width:0%"></i></div></div>
+        </div>
+
+        <div class="toolbar">
+          <input class="input search" id="searchBox" placeholder="🔎 Cari nama, sekolah, WA, email, IG..." />
+          <select class="select" id="statusFilter">
+            <option value="">Semua Status</option>
+            <option value="MENUNGGU_VERIFIKASI">Menunggu Verifikasi</option>
+            <option value="TERVERIFIKASI">Terverifikasi</option>
+            <option value="DITOLAK">Ditolak</option>
+          </select>
+          <button class="btn btn-gold" id="exportBtn">⬇️ Export CSV</button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pendaftar</th>
+                  <th>Status Pendidikan</th>
+                  <th>Kontak</th>
+                  <th>Referral</th>
+                  <th>Tgl Daftar</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="7"><div class="loading-center"><span class="spinner dark"></span> Memuat data...</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </section>
+
+      <!-- PANEL: QRIS -->
+      <section class="panel" id="panel-qris">
+        <div class="card-block">
+          <h3>Gambar QRIS Pembayaran</h3>
+          <p class="desc">Unggah gambar QRIS agar calon murid dapat membayar melalui scan QR. Gambar akan tampil otomatis pada halaman pendaftaran. Format JPG/PNG/WebP, maks 5 MB.</p>
+          <div class="qris-current" id="qrisCurrent" style="display:none">
+            <img id="qrisCurrentImg" alt="QRIS saat ini" />
+            <div style="margin-top:12px"><button class="btn btn-danger btn-sm" id="qrisDelete">🗑️ Hapus QRIS</button></div>
+          </div>
+          <div class="qris-upload" id="qrisUpload">
+            <div style="font-size:2rem">📤</div>
+            <p style="color:var(--muted);margin-top:6px"><b style="color:var(--blue)">Klik untuk memilih</b> gambar QRIS</p>
+            <input type="file" id="qrisInput" accept="image/jpeg,image/png,image/webp" hidden />
+          </div>
+        </div>
+      </section>
+
+      <!-- PANEL: PENGATURAN -->
+      <section class="panel" id="panel-pengaturan">
+        <div class="card-block">
+          <h3>Informasi Pembayaran & Kontak</h3>
+          <p class="desc">Data ini tampil pada halaman pendaftaran publik.</p>
+          <form id="settingsForm">
+            <div class="settings-grid">
+              <div class="field"><label>Kuota Total</label><input class="input" type="number" name="kuota_total" /></div>
+              <div class="field"><label>Biaya (Rp)</label><input class="input" type="number" name="biaya" /></div>
+              <div class="field"><label>Kode Unik Pembayaran</label><input class="input" type="text" name="kode_unik" /></div>
+              <div class="field"><label>Periode Pendaftaran</label><input class="input" type="text" name="periode_pendaftaran" /></div>
+              <div class="field"><label>Nama Bank</label><input class="input" type="text" name="bank_nama" /></div>
+              <div class="field"><label>Nomor Rekening</label><input class="input" type="text" name="bank_rekening" /></div>
+              <div class="field"><label>Atas Nama</label><input class="input" type="text" name="bank_atasnama" /></div>
+              <div class="field"><label>Nomor WhatsApp</label><input class="input" type="text" name="wa_kontak" /></div>
+              <div class="field full"><label>Email Kontak</label><input class="input" type="email" name="email_kontak" /></div>
+            </div>
+            <div style="margin-top:18px"><button type="submit" class="btn btn-primary" id="settingsBtn">💾 Simpan Pengaturan</button></div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- DETAIL MODAL -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Detail Pendaftar</h3>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>
