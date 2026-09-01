@@ -135,17 +135,31 @@ async function doInit() {
 
   const now = new Date().toISOString();
 
-  // seed admin default
-  const adminRows = await q('SELECT COUNT(*) AS c FROM admins');
-  if (Number(adminRows[0].c) === 0) {
-    const username = process.env.ADMIN_USERNAME || 'admin';
-    const password = process.env.ADMIN_PASSWORD || 'widya2026';
-    const hash = bcrypt.hashSync(password, 10);
+  // Admin: jika ADMIN_USERNAME & ADMIN_PASSWORD diset (mis. di Vercel), jadikan
+  // otoritatif -> buat baru ATAU perbarui password-nya. Ini memastikan kredensial
+  // yang kamu set di Environment Variables selalu bisa dipakai login.
+  const envUser = process.env.ADMIN_USERNAME;
+  const envPass = process.env.ADMIN_PASSWORD;
+  if (envUser && envPass) {
+    const hash = bcrypt.hashSync(envPass, 10);
     await run(
-      'INSERT INTO admins (username, nama, password_hash, created_at) VALUES (?, ?, ?, ?)',
-      [username, 'Administrator', hash, now]
+      `INSERT INTO admins (username, nama, password_hash, created_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash`,
+      [envUser.trim(), 'Administrator', hash, now]
     );
-    console.log(`[init] Admin default dibuat -> username: "${username}"`);
+    console.log(`[init] Admin (dari env) siap -> username: "${envUser.trim()}"`);
+  } else {
+    // fallback dev: admin default hanya jika tabel masih kosong
+    const adminRows = await q('SELECT COUNT(*) AS c FROM admins');
+    if (Number(adminRows[0].c) === 0) {
+      const hash = bcrypt.hashSync('widya2026', 10);
+      await run(
+        'INSERT INTO admins (username, nama, password_hash, created_at) VALUES (?, ?, ?, ?)',
+        ['admin', 'Administrator', hash, now]
+      );
+      console.log('[init] Admin default dibuat -> username: "admin"');
+    }
   }
 
   // seed settings default

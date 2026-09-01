@@ -32,19 +32,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Bungkus handler async agar error selalu diteruskan ke error handler (bukan crash/hang)
+const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 // Pastikan schema & seed siap sebelum menangani request (penting untuk serverless)
-app.use(async (req, res, next) => {
-  try {
-    await ensureInit();
-    next();
-  } catch (err) {
-    console.error('DB init error:', err);
-    res.status(503).json({ error: 'Basis data belum siap. Coba lagi sesaat lagi.' });
-  }
+app.use((req, res, next) => {
+  ensureInit()
+    .then(() => next())
+    .catch((err) => {
+      console.error('DB init error:', err);
+      res.status(503).json({
+        error:
+          'Basis data belum siap / belum dikonfigurasi. Pastikan TURSO_DATABASE_URL & TURSO_AUTH_TOKEN sudah diset di Vercel, lalu Redeploy.',
+      });
+    });
 });
 
 // ---- Multer (memory) ----
@@ -83,16 +89,14 @@ const asInt = (v, d = 0) => {
 };
 
 async function countTerisi() {
-  const rows = await q(
-    "SELECT COUNT(*) AS c FROM registrations WHERE status != 'DITOLAK'"
-  );
+  const rows = await q("SELECT COUNT(*) AS c FROM registrations WHERE status != 'DITOLAK'");
   return Number(rows[0].c);
 }
 
 // =====================================================================
 // PUBLIC API
 // =====================================================================
-app.get('/api/info', async (req, res) => {
+app.get('/api/info', ah(async (req, res) => {
   const s = await getAllSettings();
   const kuotaTotal = asInt(s.kuota_total, 100);
   const terisi = await countTerisi();
@@ -112,17 +116,17 @@ app.get('/api/info', async (req, res) => {
     qris_tersedia: !!qris,
     status_pendidikan_opsi: STATUS_PENDIDIKAN,
   });
-});
+}));
 
-app.get('/api/qris', async (req, res) => {
+app.get('/api/qris', ah(async (req, res) => {
   const f = await getFile('qris', 0);
   if (!f) return res.status(404).json({ error: 'QRIS belum tersedia.' });
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Cache-Control', 'no-store');
   res.send(Buffer.from(f.data, 'base64'));
-});
+}));
 
-app.post('/api/registrations', handleUpload('bukti'), async (req, res) => {
+app.post('/api/registrations', handleUpload('bukti'), ah(async (req, res) => {
   const { valid, errors, data } = validateRegistration(req.body);
   if (!valid) return res.status(400).json({ error: 'Validasi gagal.', fields: errors });
 
@@ -140,19 +144,9 @@ app.post('/api/registrations', handleUpload('bukti'), async (req, res) => {
        has_bukti, status, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      data.nama_lengkap,
-      data.asal_sekolah,
-      data.tanggal_lahir,
-      data.status_pendidikan,
-      data.nomor_wa,
-      data.instagram || null,
-      data.gmail,
-      data.referral || null,
-      data.nominal_transfer || null,
-      hasBukti,
-      'MENUNGGU_VERIFIKASI',
-      now,
-      now,
+      data.nama_lengkap, data.asal_sekolah, data.tanggal_lahir, data.status_pendidikan,
+      data.nomor_wa, data.instagram || null, data.gmail, data.referral || null,
+      data.nominal_transfer || null, hasBukti, 'MENUNGGU_VERIFIKASI', now, now,
     ]
   );
 
@@ -166,12 +160,12 @@ app.post('/api/registrations', handleUpload('bukti'), async (req, res) => {
     message:
       'Terima kasih, data Kamu berhasil dikirim dan akan segera ditindaklanjuti oleh Tim Rubela UTBK Indonesia.',
   });
-});
+}));
 
 // =====================================================================
 // AUTH
 // =====================================================================
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', ah(async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password)
     return res.status(400).json({ error: 'Username dan password wajib diisi.' });
@@ -182,7 +176,7 @@ app.post('/api/auth/login', async (req, res) => {
   const token = issueToken(admin);
   setAuthCookie(res, token);
   res.json({ ok: true, token, admin: { username: admin.username, nama: admin.nama } });
-});
+}));
 
 app.post('/api/auth/logout', (req, res) => {
   clearAuthCookie(res);
@@ -196,7 +190,7 @@ app.get('/api/auth/me', requireAdmin, (req, res) => {
 // =====================================================================
 // ADMIN API
 // =====================================================================
-app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+app.get('/api/admin/stats', requireAdmin, ah(async (req, res) => {
   const totalRows = await q('SELECT COUNT(*) AS c FROM registrations');
   const total = Number(totalRows[0].c);
   const by_status = {};
@@ -213,13 +207,12 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     kuota_terisi: terisi,
     kuota_tersisa: Math.max(0, kuotaTotal - terisi),
   });
-});
+}));
 
-app.get('/api/admin/registrations', requireAdmin, async (req, res) => {
+app.get('/api/admin/registrations', requireAdmin, ah(async (req, res) => {
   const { q: search, status, page = '1', pageSize = '20' } = req.query;
   const where = [];
   const params = [];
-
   if (status && STATUS_PENDAFTARAN.includes(status)) {
     where.push('status = ?');
     params.push(status);
@@ -235,7 +228,6 @@ app.get('/api/admin/registrations', requireAdmin, async (req, res) => {
 
   const totalRows = await q(`SELECT COUNT(*) AS c FROM registrations ${whereSql}`, params);
   const total = Number(totalRows[0].c);
-
   const p = Math.max(1, asInt(page, 1));
   const size = Math.min(100, Math.max(1, asInt(pageSize, 20)));
   const offset = (p - 1) * size;
@@ -247,49 +239,44 @@ app.get('/api/admin/registrations', requireAdmin, async (req, res) => {
      FROM registrations ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [...params, size, offset]
   );
-
   res.json({ data: rows, page: p, pageSize: size, total, totalPages: Math.ceil(total / size) });
-});
+}));
 
-app.get('/api/admin/registrations/:id', requireAdmin, async (req, res) => {
+app.get('/api/admin/registrations/:id', requireAdmin, ah(async (req, res) => {
   const rows = await q('SELECT * FROM registrations WHERE id = ?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Data tidak ditemukan.' });
   res.json(rows[0]);
-});
+}));
 
-app.get('/api/admin/registrations/:id/bukti', requireAdmin, async (req, res) => {
+app.get('/api/admin/registrations/:id/bukti', requireAdmin, ah(async (req, res) => {
   const f = await getFile('bukti', asInt(req.params.id));
   if (!f) return res.status(404).json({ error: 'Bukti tidak tersedia.' });
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Cache-Control', 'no-store');
   res.send(Buffer.from(f.data, 'base64'));
-});
+}));
 
-app.patch('/api/admin/registrations/:id/status', requireAdmin, async (req, res) => {
+app.patch('/api/admin/registrations/:id/status', requireAdmin, ah(async (req, res) => {
   const { status, catatan_admin } = req.body || {};
   if (!STATUS_PENDAFTARAN.includes(status))
     return res.status(400).json({ error: 'Status tidak valid.' });
   const rows = await q('SELECT id FROM registrations WHERE id = ?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Data tidak ditemukan.' });
-
   await run('UPDATE registrations SET status = ?, catatan_admin = ?, updated_at = ? WHERE id = ?', [
-    status,
-    catatan_admin || null,
-    new Date().toISOString(),
-    req.params.id,
+    status, catatan_admin || null, new Date().toISOString(), req.params.id,
   ]);
   res.json({ ok: true });
-});
+}));
 
-app.delete('/api/admin/registrations/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/registrations/:id', requireAdmin, ah(async (req, res) => {
   const rows = await q('SELECT id FROM registrations WHERE id = ?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'Data tidak ditemukan.' });
   await deleteFile('bukti', asInt(req.params.id));
   await run('DELETE FROM registrations WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
-app.get('/api/admin/export', requireAdmin, async (req, res) => {
+app.get('/api/admin/export', requireAdmin, ah(async (req, res) => {
   const rows = await q('SELECT * FROM registrations ORDER BY created_at DESC');
   const headers = [
     'ID', 'Nama Lengkap', 'Asal Sekolah', 'Tanggal Lahir', 'Status Pendidikan',
@@ -314,24 +301,24 @@ app.get('/api/admin/export', requireAdmin, async (req, res) => {
     `attachment; filename="pendaftar-widya-${new Date().toISOString().slice(0, 10)}.csv"`
   );
   res.send(csv);
-});
+}));
 
-app.post('/api/admin/qris', requireAdmin, handleUpload('qris'), async (req, res) => {
+app.post('/api/admin/qris', requireAdmin, handleUpload('qris'), ah(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'File QRIS wajib diunggah.' });
   await saveFile('qris', 0, req.file.mimetype, req.file.buffer.toString('base64'));
   res.json({ ok: true });
-});
+}));
 
-app.delete('/api/admin/qris', requireAdmin, async (req, res) => {
+app.delete('/api/admin/qris', requireAdmin, ah(async (req, res) => {
   await deleteFile('qris', 0);
   res.json({ ok: true });
-});
+}));
 
-app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+app.get('/api/admin/settings', requireAdmin, ah(async (req, res) => {
   res.json(await getAllSettings());
-});
+}));
 
-app.patch('/api/admin/settings', requireAdmin, async (req, res) => {
+app.patch('/api/admin/settings', requireAdmin, ah(async (req, res) => {
   const editable = [
     'kuota_total', 'biaya', 'kode_unik', 'bank_nama', 'bank_rekening',
     'bank_atasnama', 'wa_kontak', 'email_kontak', 'periode_pendaftaran',
@@ -340,13 +327,23 @@ app.patch('/api/admin/settings', requireAdmin, async (req, res) => {
     if (req.body[key] !== undefined) await setSetting(key, String(req.body[key]));
   }
   res.json({ ok: true, settings: await getAllSettings() });
-});
+}));
 
 // =====================================================================
-// STATIC + PAGES
+// STATIC + PAGES (dipakai saat dijalankan lokal; di Vercel dilayani otomatis)
 // =====================================================================
 app.use(express.static(PUBLIC_DIR));
 app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
 app.get('/', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+
+// 404 khusus API -> JSON (bukan HTML) agar frontend tetap dapat pesan yang jelas
+app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));
+
+// Global error handler -> selalu JSON
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Terjadi kesalahan pada server. Silakan coba lagi.' });
+});
 
 export default app;
