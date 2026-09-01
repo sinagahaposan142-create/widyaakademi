@@ -50,34 +50,45 @@ online, unggah bukti pembayaran, gambar QRIS, dan **dashboard admin** terpusat.
 
 ## 🚀 Deploy ke Vercel (langkah demi langkah)
 
-### 1. Siapkan basis data Turso (gratis)
-1. Daftar di <https://turso.tech> (bisa login pakai GitHub).
-2. Buat database baru (misal nama `widya`).
-3. Catat **Database URL** (bentuknya `libsql://widya-xxxx.turso.io`).
-4. Buat **auth token** untuk database tersebut, lalu salin token-nya.
-
-> Bisa lewat dashboard web Turso, atau via CLI:
-> ```bash
-> turso db create widya
-> turso db show widya --url          # -> TURSO_DATABASE_URL
-> turso db tokens create widya       # -> TURSO_AUTH_TOKEN
-> ```
-
-### 2. Deploy ke Vercel
+### 1. Import project ke Vercel
 1. Push repo ini ke GitHub (sudah dilakukan).
 2. Buka <https://vercel.com> → **Add New… → Project** → pilih repo `widyaakademi`.
-3. Framework Preset: **Other** (biarkan default; `vercel.json` sudah mengatur build).
-4. Pada bagian **Environment Variables**, tambahkan:
+3. Framework Preset: **Other** (biarkan default; `vercel.json` sudah mengatur routing).
+4. **Jangan klik Deploy dulu** — siapkan database & env vars di langkah 2.
 
-   | Name | Value |
-   |------|-------|
-   | `TURSO_DATABASE_URL` | `libsql://widya-xxxx.turso.io` |
-   | `TURSO_AUTH_TOKEN`   | _(token dari Turso)_ |
-   | `JWT_SECRET`         | _(teks acak panjang & rahasia)_ |
-   | `ADMIN_USERNAME`     | _(username admin pilihanmu)_ |
-   | `ADMIN_PASSWORD`     | _(password admin pilihanmu)_ |
+### 2. Tambahkan database Turso (gratis)
 
-5. Klik **Deploy**. Selesai — situs publik di domain Vercel, dan dashboard di `/admin`.
+**Cara termudah (integrasi Vercel — otomatis mengisi env var):**
+1. Di halaman project Vercel → tab **Storage** → **Create Database** →
+   pilih **Turso** (dari Marketplace) → ikuti wizard.
+2. Integrasi ini otomatis menambahkan `TURSO_DATABASE_URL` dan
+   `TURSO_AUTH_TOKEN` ke Environment Variables project. Selesai.
+
+**Atau cara manual:**
+1. Daftar di <https://turso.tech> (login pakai GitHub).
+2. Buat database (mis. `widya`), lalu catat **Database URL** & buat **auth token**:
+   ```bash
+   turso db create widya
+   turso db show widya --url      # -> TURSO_DATABASE_URL
+   turso db tokens create widya   # -> TURSO_AUTH_TOKEN
+   ```
+3. Tambahkan keduanya manual di **Settings → Environment Variables** Vercel.
+
+### 3. Tambahkan env var lain & deploy
+Di **Settings → Environment Variables**, tambahkan juga:
+
+| Name | Value |
+|------|-------|
+| `JWT_SECRET`     | _(teks acak panjang & rahasia)_ |
+| `ADMIN_USERNAME` | _(username admin pilihanmu)_ |
+| `ADMIN_PASSWORD` | _(password admin pilihanmu)_ |
+
+Lalu klik **Deploy** (atau **Redeploy** jika env var ditambahkan setelah deploy pertama).
+Selesai — situs publik ada di domain Vercel, dashboard di `/admin`.
+
+> ⚠️ **Penting:** setiap kali menamb/ubah Environment Variables, lakukan **Redeploy**
+> agar perubahan berlaku. Jika `TURSO_DATABASE_URL` belum diset, endpoint API akan
+> membalas pesan jelas (bukan crash) yang meminta env var Turso diisi.
 
 > Akun admin dibuat otomatis saat pertama kali database diakses, memakai
 > `ADMIN_USERNAME` / `ADMIN_PASSWORD`. **Ganti nilai default sebelum deploy.**

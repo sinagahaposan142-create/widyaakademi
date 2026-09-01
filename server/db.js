@@ -1,4 +1,3 @@
-import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 /*
  * Data layer berbasis libSQL (SQLite-compatible).
- * - Lokal / dev  : file database (TURSO_DATABASE_URL kosong -> file:data/widya.db)
- * - Produksi/Vercel: set TURSO_DATABASE_URL=libsql://... & TURSO_AUTH_TOKEN=...
- *   (Vercel serverless tidak punya disk permanen, jadi WAJIB pakai Turso.)
+ * - Produksi/Vercel : set TURSO_DATABASE_URL=libsql://... & TURSO_AUTH_TOKEN=...
+ *   (memakai @libsql/client/web — murni JS, tanpa native addon, aman di serverless)
+ * - Lokal / dev     : jika env kosong, memakai file:data/widya.db (@libsql/client node)
+ *
+ * Client dibuat SECARA LAZY (bukan saat import) agar modul tidak crash saat
+ * dimuat di lingkungan serverless (mis. filesystem read-only).
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,27 +20,52 @@ function resolveUrl() {
     process.env.TURSO_DATABASE_URL ||
     process.env.LIBSQL_URL ||
     process.env.DATABASE_URL;
-  if (envUrl) return envUrl;
-  // fallback file lokal
+  if (envUrl) return envUrl.trim();
+
+  // Tidak ada URL Turso -> mode file lokal. Di serverless (Vercel) ini tidak boleh
+  // terjadi karena filesystem read-only; beri pesan yang jelas.
+  if (process.env.VERCEL || process.env.NOW_REGION) {
+    throw new Error(
+      'TURSO_DATABASE_URL belum diset. Tambahkan Environment Variables Turso (TURSO_DATABASE_URL & TURSO_AUTH_TOKEN) di dashboard Vercel.'
+    );
+  }
   const dataDir = path.join(__dirname, '..', 'data');
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   return 'file:' + path.join(dataDir, 'widya.db');
 }
 
-const url = resolveUrl();
-const authToken =
-  process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || undefined;
+let _clientPromise = null;
 
-const client = createClient(authToken ? { url, authToken } : { url });
+async function getClient() {
+  if (!_clientPromise) _clientPromise = createClientLazy();
+  return _clientPromise;
+}
+
+async function createClientLazy() {
+  const url = resolveUrl();
+  const authToken =
+    process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || undefined;
+
+  if (url.startsWith('file:')) {
+    // build node (mendukung file lokal) — hanya untuk dev
+    const mod = await import('@libsql/client');
+    return mod.createClient({ url });
+  }
+  // build web murni-JS untuk remote Turso (aman di serverless)
+  const mod = await import('@libsql/client/web');
+  return mod.createClient(authToken ? { url, authToken } : { url });
+}
 
 /** Jalankan query, kembalikan array baris (objek). */
 export async function q(sql, args = []) {
+  const client = await getClient();
   const res = await client.execute({ sql, args });
   return res.rows;
 }
 
 /** Jalankan perintah tulis, kembalikan { id, changes }. */
 export async function run(sql, args = []) {
+  const client = await getClient();
   const res = await client.execute({ sql, args });
   return {
     id: res.lastInsertRowid != null ? Number(res.lastInsertRowid) : null,
@@ -50,13 +77,18 @@ export async function run(sql, args = []) {
 let initPromise = null;
 
 export function ensureInit() {
-  if (!initPromise) initPromise = doInit();
+  if (!initPromise) {
+    initPromise = doInit().catch((err) => {
+      // reset agar percobaan berikutnya bisa mencoba lagi (mis. env baru diset)
+      initPromise = null;
+      throw err;
+    });
+  }
   return initPromise;
 }
 
-async function doInit() {
-  await client.executeMultiple(`
-    CREATE TABLE IF NOT EXISTS registrations (
+const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS registrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nama_lengkap      TEXT NOT NULL,
       asal_sekolah      TEXT NOT NULL,
@@ -72,32 +104,34 @@ async function doInit() {
       catatan_admin     TEXT,
       created_at        TEXT NOT NULL,
       updated_at        TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_reg_status ON registrations(status);
-    CREATE INDEX IF NOT EXISTS idx_reg_created ON registrations(created_at);
-
-    CREATE TABLE IF NOT EXISTS admins (
+    )`,
+  `CREATE INDEX IF NOT EXISTS idx_reg_status ON registrations(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_reg_created ON registrations(created_at)`,
+  `CREATE TABLE IF NOT EXISTS admins (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username      TEXT NOT NULL UNIQUE,
       nama          TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       created_at    TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS settings (
+    )`,
+  `CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS files (
+    )`,
+  `CREATE TABLE IF NOT EXISTS files (
       scope      TEXT NOT NULL,
       ref_id     INTEGER NOT NULL DEFAULT 0,
       mime       TEXT NOT NULL,
       data       TEXT NOT NULL,
       created_at TEXT NOT NULL,
       PRIMARY KEY (scope, ref_id)
-    );
-  `);
+    )`,
+];
+
+async function doInit() {
+  for (const stmt of SCHEMA_STATEMENTS) {
+    await run(stmt);
+  }
 
   const now = new Date().toISOString();
 
@@ -166,23 +200,13 @@ export async function saveFile(scope, refId, mime, base64) {
 }
 
 export async function getFile(scope, refId) {
-  const rows = await q(
-    'SELECT mime, data FROM files WHERE scope = ? AND ref_id = ?',
-    [scope, refId]
-  );
+  const rows = await q('SELECT mime, data FROM files WHERE scope = ? AND ref_id = ?', [
+    scope,
+    refId,
+  ]);
   return rows.length ? rows[0] : null;
 }
 
 export async function deleteFile(scope, refId) {
   await run('DELETE FROM files WHERE scope = ? AND ref_id = ?', [scope, refId]);
 }
-
-export async function fileExists(scope, refId) {
-  const rows = await q(
-    'SELECT 1 AS x FROM files WHERE scope = ? AND ref_id = ? LIMIT 1',
-    [scope, refId]
-  );
-  return rows.length > 0;
-}
-
-export default client;
