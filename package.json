@@ -1,9 +1,12 @@
 {
   "name": "widya-nusantara-academy",
   "version": "1.0.0",
-  "description": "Website pendaftaran bimbel Widya Nusantara Academy dengan dashboard admin",
+  "description": "Website pendaftaran bimbel Widya Nusantara Academy dengan dashboard admin (siap deploy Vercel + Turso)",
   "type": "module",
   "main": "server/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
@@ -13,16 +16,18 @@
     "bimbel",
     "pendaftaran",
     "utbk",
-    "snbt"
+    "snbt",
+    "vercel",
+    "turso"
   ],
   "author": "Widya Nusantara Academy",
   "license": "MIT",
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.3.0"
+    "multer": "^2.0.0"
   }
 }

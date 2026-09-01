@@ -296,7 +296,7 @@
         <div class="detail-item full">
           <div class="k">Bukti Pembayaran</div>
           <div class="bukti-box" id="buktiBox">
-            ${r.bukti_filename
+            ${r.has_bukti
               ? '<div class="bukti-none"><span class="spinner dark"></span> Memuat bukti...</div>'
               : '<div class="bukti-none">Belum ada bukti pembayaran diunggah.</div>'}
           </div>
@@ -325,7 +325,7 @@
       $('[data-delete]', body).addEventListener('click', () => deleteReg(r.id));
 
       // Muat gambar bukti via fetch berautentikasi (mendukung cookie & Bearer token)
-      if (r.bukti_filename) {
+      if (r.has_bukti) {
         api('/api/admin/registrations/' + r.id + '/bukti')
           .then((res) => (res.ok ? res.blob() : Promise.reject()))
           .then((blob) => {

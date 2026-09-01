@@ -84,7 +84,7 @@
   const previewImg = $('#previewImg');
   const fileName = $('#fileName');
 
-  const MAX = 5 * 1024 * 1024;
+  const MAX = 4 * 1024 * 1024;
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 
   function showFile(file) {
@@ -95,7 +95,7 @@
       return;
     }
     if (file.size > MAX) {
-      setFieldError('bukti', 'Ukuran file maksimal 5 MB.');
+      setFieldError('bukti', 'Ukuran file maksimal 4 MB.');
       resetFile();
       return;
     }

@@ -1,16 +1,15 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import db from './db.js';
+import { q } from './db.js';
 
 const JWT_SECRET =
   process.env.JWT_SECRET || 'widya-nusantara-academy-secret-key-change-me';
 const TOKEN_TTL = '12h';
 const COOKIE_NAME = 'widya_admin_token';
 
-export function verifyCredentials(username, password) {
-  const admin = db
-    .prepare('SELECT * FROM admins WHERE username = ?')
-    .get(username);
+export async function verifyCredentials(username, password) {
+  const rows = await q('SELECT * FROM admins WHERE username = ?', [username]);
+  const admin = rows[0];
   if (!admin) return null;
   if (!bcrypt.compareSync(password, admin.password_hash)) return null;
   return { id: admin.id, username: admin.username, nama: admin.nama };
