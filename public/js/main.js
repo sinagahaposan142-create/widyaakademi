@@ -1,91 +1,251 @@
-/* Widya Nusantara Academy — landing page & registration logic */
+/* Widya Nusantara Academy — landing page & logika pendaftaran */
 (function () {
   'use strict';
 
-  const $ = (sel, ctx = document) => ctx.querySelector(sel);
-  const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+  const { $, $$, fmtRp, waLink, applyBranding } = window.WNA;
 
-  // ---- Year ----
+  const MAX_UPLOAD = 3 * 1024 * 1024;
+  const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+
+  let info = null;
+
+  /* ---------------- Tahun & navigasi ---------------- */
   $('#year').textContent = new Date().getFullYear();
 
-  // ---- Mobile nav toggle ----
   const navToggle = $('#navToggle');
   const navLinks = $('#navLinks');
-  navToggle?.addEventListener('click', () => navLinks.classList.toggle('open'));
+  navToggle?.addEventListener('click', () => {
+    const open = navLinks.classList.toggle('open');
+    navToggle.setAttribute('aria-expanded', String(open));
+  });
   $$('#navLinks a').forEach((a) =>
-    a.addEventListener('click', () => navLinks.classList.remove('open'))
+    a.addEventListener('click', () => {
+      navLinks.classList.remove('open');
+      navToggle?.setAttribute('aria-expanded', 'false');
+    })
   );
 
-  // ---- Load public info ----
-  const formatRp = (n) => 'Rp' + Number(n).toLocaleString('id-ID');
+  /* ---------------- Render informasi publik ---------------- */
+  const setAll = (sel, value) => $$(sel).forEach((el) => (el.textContent = value));
 
-  fetch('/api/info')
-    .then((r) => r.json())
-    .then((info) => {
-      // Quota
-      const sisa = info.kuota_tersisa;
-      $('#statSisa').textContent = sisa;
-      $('#quotaText').textContent =
-        sisa > 0 ? `${sisa} kursi tersisa` : 'Kuota penuh';
+  function renderQuota(d) {
+    const sisa = Number(d.kuota_tersisa) || 0;
+    $('#statSisa').textContent = sisa;
+    $('#quotaText').textContent = sisa > 0 ? `${sisa} kursi tersisa` : 'Kuota penuh';
+  }
 
-      // Bank / payment
-      if (info.bank_nama) $('#bankName').textContent = info.bank_nama;
-      if (info.bank_rekening) $('#accNo').textContent = info.bank_rekening;
-      if (info.bank_atasnama) $('#accName').textContent = info.bank_atasnama;
-      if (info.kode_unik) {
-        $('#kodeUnik').textContent = info.kode_unik;
-        $('#kodeUnik2').textContent = info.kode_unik;
-      }
+  function renderInfo(d) {
+    info = d;
+    applyBranding(d);
 
-      // Contact
-      const wa = (info.wa_kontak || '').replace(/\D/g, '');
-      const waIntl = wa.startsWith('0') ? '62' + wa.slice(1) : wa;
-      $('#waLink').href = `https://wa.me/${waIntl}`;
-      $('#waText').textContent = info.wa_kontak || '';
-      $('#footWa').textContent = 'WhatsApp: ' + (info.wa_kontak || '');
-      $('#footWa').href = `https://wa.me/${waIntl}`;
-      $('#mailLink').href = `mailto:${info.email_kontak || ''}`;
-      $('#mailText').textContent = info.email_kontak || '';
-      $('#footMail').textContent = info.email_kontak || '';
-      $('#footMail').href = `mailto:${info.email_kontak || ''}`;
+    // Angka & teks dinamis (bisa diubah dari panel admin)
+    setAll('.js-biaya', fmtRp(d.biaya));
+    setAll('.js-durasi', d.durasi_program);
+    setAll('.js-tryout', d.jumlah_tryout);
+    setAll('.js-kuota', d.kuota_total);
+    setAll('.js-periode', d.periode_pendaftaran || '–');
+    setAll('.js-komisi', fmtRp(d.komisi_referral));
 
-      // QRIS image
-      if (info.qris_tersedia) {
-        $('#qrisImg').src = '/api/qris?t=' + Date.now();
-        $('#qrisPreview').style.display = 'block';
-      }
+    renderQuota(d);
 
-      // Disable form if quota full
-      if (sisa <= 0) {
-        const alert = $('#formAlert');
-        alert.textContent =
-          'Mohon maaf, kuota pendaftaran sudah penuh. Silakan hubungi kami untuk info lebih lanjut.';
-        alert.classList.add('show');
-        $('#submitBtn').disabled = true;
-      }
-    })
-    .catch(() => {});
+    // Pembayaran
+    $('#bankName').textContent = d.bank_nama || '–';
+    $('#accNo').textContent = d.bank_rekening || '–';
+    $('#accName').textContent = d.bank_atasnama || '–';
+    $('#kodeUnik').textContent = d.kode_unik || '–';
+    // Contoh nominal = biaya dengan 3 digit terakhir diganti kode unik
+    if (d.biaya && d.kode_unik) {
+      const kode = String(d.kode_unik);
+      const dasar = String(d.biaya);
+      const contoh =
+        dasar.length > kode.length ? dasar.slice(0, -kode.length) + kode : dasar + kode;
+      $('#contohNominal').textContent = fmtRp(contoh);
+    } else {
+      $('#contohNominal').textContent = fmtRp(d.biaya || 0);
+    }
 
-  // ---- Copy account number ----
-  $('#copyAcc')?.addEventListener('click', () => {
-    const no = $('#accNo').textContent.trim();
-    navigator.clipboard?.writeText(no).then(() => {
-      const btn = $('#copyAcc');
-      const orig = btn.textContent;
-      btn.textContent = '✓ Tersalin';
-      setTimeout(() => (btn.textContent = orig), 1500);
-    });
+    // QRIS
+    if (d.qris_tersedia && d.qris_url) {
+      $('#qrisImg').src = d.qris_url;
+      $('#qrisPreview').style.display = 'block';
+    } else {
+      $('#qrisPreview').style.display = 'none';
+    }
+
+    // Kontak
+    const wa = d.wa_kontak || '';
+    $('#waLink').href = waLink(wa);
+    $('#waText').textContent = wa || '–';
+    $('#footWa').textContent = 'WhatsApp: ' + (wa || '–');
+    $('#footWa').href = waLink(wa);
+
+    const mail = d.email_kontak || '';
+    $('#mailLink').href = 'mailto:' + mail;
+    $('#mailText').textContent = mail || '–';
+    $('#footMail').textContent = mail || '–';
+    $('#footMail').href = 'mailto:' + mail;
+
+    const ig = d.instagram_kontak || '';
+    if (ig) {
+      $('#igLink').href = 'https://instagram.com/' + encodeURIComponent(ig);
+      $('#igText').textContent = '@' + ig;
+      $('#footIg').textContent = '@' + ig;
+      $('#footIg').href = 'https://instagram.com/' + encodeURIComponent(ig);
+    } else {
+      $('#igLink').closest('.contact-card').style.display = 'none';
+      $('#footIg').style.display = 'none';
+    }
+
+    // Syarat referral dari pengaturan admin
+    if (d.affiliate_syarat) {
+      const list = $('#syaratList');
+      list.innerHTML = '';
+      d.affiliate_syarat
+        .split(/(?<=\.)\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((s) => {
+          const li = document.createElement('li');
+          li.textContent = s;
+          list.appendChild(li);
+        });
+    }
+
+    // Status pendaftaran
+    const alertBox = $('#formAlert');
+    const submitBtn = $('#submitBtn');
+    if (!d.pendaftaran_dibuka) {
+      alertBox.textContent =
+        (d.alasan_tutup || 'Pendaftaran sedang ditutup.') +
+        ' Hubungi kami lewat WhatsApp untuk informasi lebih lanjut.';
+      alertBox.classList.add('show');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Pendaftaran Ditutup';
+    } else if (submitBtn.disabled) {
+      alertBox.classList.remove('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Kirim Pendaftaran';
+    }
+  }
+
+  async function loadInfo() {
+    try {
+      const data = await window.WNA.fetchInfo();
+      renderInfo(data);
+    } catch {
+      applyBranding({ logo_teks: 'W' });
+      $('#quotaText').textContent = 'Gagal memuat data';
+    }
+  }
+
+  /** Perbarui hanya angka kuota (dipanggil berkala & saat tab kembali aktif). */
+  async function refreshQuota() {
+    try {
+      const data = await window.WNA.fetchInfo();
+      info = data;
+      renderQuota(data);
+      if (!data.pendaftaran_dibuka) renderInfo(data);
+    } catch {
+      /* diam saja — cukup pakai angka terakhir */
+    }
+  }
+
+  loadInfo();
+  setInterval(refreshQuota, 60_000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshQuota();
   });
 
-  // ---- File upload preview ----
+  /* ---------------- Salin nomor rekening ---------------- */
+  $('#copyAcc')?.addEventListener('click', async () => {
+    const no = $('#accNo').textContent.trim();
+    const btn = $('#copyAcc');
+    const orig = btn.textContent;
+    try {
+      await navigator.clipboard.writeText(no);
+      btn.textContent = '✓ Tersalin';
+    } catch {
+      btn.textContent = '✕ Gagal';
+    }
+    setTimeout(() => (btn.textContent = orig), 1600);
+  });
+
+  /* ---------------- Pesan error per field ---------------- */
+  function setFieldError(name, msg) {
+    const el = $(`.field-error[data-for="${name}"]`);
+    if (el) {
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+    $(`[name="${name}"]`)?.classList.add('invalid');
+  }
+  function clearFieldError(name) {
+    $(`.field-error[data-for="${name}"]`)?.classList.remove('show');
+    $(`[name="${name}"]`)?.classList.remove('invalid');
+  }
+  function clearAllErrors() {
+    $$('.field-error').forEach((e) => e.classList.remove('show'));
+    $$('.input, .select').forEach((e) => e.classList.remove('invalid'));
+    if (info?.pendaftaran_dibuka !== false) $('#formAlert').classList.remove('show');
+  }
+
+  /* ---------------- Kode referral ---------------- */
+  const refInput = $('#f-referral');
+  const refHint = $('#refHint');
+  const HINT_DEFAULT = 'Isi jika kamu diajak oleh affiliator. Kode akan diperiksa otomatis.';
+
+  // Prefill dari tautan referral: /?ref=KODE
+  const paramRef = new URLSearchParams(location.search).get('ref');
+  if (paramRef) {
+    refInput.value = paramRef.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  let refTimer = null;
+  async function checkReferral() {
+    const kode = refInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    refInput.value = kode;
+    clearFieldError('referral');
+
+    if (!kode) {
+      refHint.textContent = HINT_DEFAULT;
+      refHint.style.color = '';
+      return;
+    }
+    if (kode.length < 4) {
+      refHint.textContent = 'Kode referral minimal 4 karakter.';
+      refHint.style.color = 'var(--warn)';
+      return;
+    }
+
+    refHint.textContent = 'Memeriksa kode…';
+    refHint.style.color = '';
+    try {
+      const res = await fetch('/api/referral/check?kode=' + encodeURIComponent(kode));
+      const data = await res.json();
+      if (data.valid) {
+        refHint.textContent = `✓ Kode valid — kamu diajak oleh ${data.nama}.`;
+        refHint.style.color = 'var(--success)';
+      } else {
+        refHint.textContent = '✕ ' + (data.error || 'Kode referral tidak valid.');
+        refHint.style.color = 'var(--danger)';
+      }
+    } catch {
+      refHint.textContent = 'Tidak bisa memeriksa kode sekarang. Kode akan diperiksa saat dikirim.';
+      refHint.style.color = 'var(--warn)';
+    }
+  }
+  refInput.addEventListener('input', () => {
+    clearTimeout(refTimer);
+    refTimer = setTimeout(checkReferral, 450);
+  });
+  if (paramRef) checkReferral();
+
+  /* ---------------- Unggah bukti ---------------- */
   const uploadArea = $('#uploadArea');
   const buktiInput = $('#buktiInput');
   const filePreview = $('#filePreview');
   const previewImg = $('#previewImg');
   const fileName = $('#fileName');
-
-  const MAX = 4 * 1024 * 1024;
-  const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 
   function showFile(file) {
     if (!file) return;
@@ -94,8 +254,11 @@
       resetFile();
       return;
     }
-    if (file.size > MAX) {
-      setFieldError('bukti', 'Ukuran file maksimal 4 MB.');
+    if (file.size > MAX_UPLOAD) {
+      setFieldError(
+        'bukti',
+        `Ukuran file maksimal 3 MB (file kamu ${(file.size / 1048576).toFixed(1)} MB). Kompres dulu, ya.`
+      );
       resetFile();
       return;
     }
@@ -114,7 +277,7 @@
     buktiInput.value = '';
     filePreview.classList.remove('show');
     uploadArea.style.display = 'block';
-    previewImg.src = '';
+    previewImg.removeAttribute('src');
   }
 
   uploadArea?.addEventListener('click', () => buktiInput.click());
@@ -141,56 +304,39 @@
     }
   });
 
-  // ---- Field error helpers ----
-  function setFieldError(name, msg) {
-    const el = $(`.field-error[data-for="${name}"]`);
-    if (el) {
-      el.textContent = msg;
-      el.classList.add('show');
-    }
-    const input = $(`[name="${name}"]`);
-    input?.classList.add('invalid');
-  }
-  function clearFieldError(name) {
-    const el = $(`.field-error[data-for="${name}"]`);
-    if (el) el.classList.remove('show');
-    const input = $(`[name="${name}"]`);
-    input?.classList.remove('invalid');
-  }
-  function clearAllErrors() {
-    $$('.field-error').forEach((e) => e.classList.remove('show'));
-    $$('.input, .select').forEach((e) => e.classList.remove('invalid'));
-    $('#formAlert').classList.remove('show');
-  }
-
-  // ---- Client-side validation ----
+  /* ---------------- Validasi klien ---------------- */
   function validateClient(form) {
     const errors = {};
-    const g = (n) => form.elements[n]?.value.trim() || '';
+    const g = (n) => (form.elements[n]?.value || '').trim();
 
     if (!g('nama_lengkap')) errors.nama_lengkap = 'Nama lengkap wajib diisi.';
+    else if (g('nama_lengkap').length < 3) errors.nama_lengkap = 'Nama lengkap minimal 3 karakter.';
+
     if (!g('asal_sekolah')) errors.asal_sekolah = 'Asal sekolah wajib diisi.';
     if (!g('tanggal_lahir')) errors.tanggal_lahir = 'Tanggal lahir wajib diisi.';
-    if (!g('status_pendidikan'))
-      errors.status_pendidikan = 'Status pendidikan wajib dipilih.';
+    if (!g('status_pendidikan')) errors.status_pendidikan = 'Status pendidikan wajib dipilih.';
 
-    const wa = g('nomor_wa').replace(/[\s-]/g, '');
+    let wa = g('nomor_wa').replace(/[\s\-().]/g, '');
+    if (wa.startsWith('+62')) wa = '0' + wa.slice(3);
+    else if (wa.startsWith('62') && wa.length > 10) wa = '0' + wa.slice(2);
     if (!wa) errors.nomor_wa = 'Nomor WhatsApp wajib diisi.';
-    else if (!/^\+?\d{8,15}$/.test(wa))
-      errors.nomor_wa = 'Nomor WhatsApp harus 8-15 digit angka.';
+    else if (!/^0\d{8,14}$/.test(wa))
+      errors.nomor_wa = 'Nomor WhatsApp harus 9–15 digit dan diawali 0 (contoh: 0895xxxxxxx).';
 
     const email = g('gmail');
     if (!email) errors.gmail = 'Gmail aktif wajib diisi.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errors.gmail = 'Format email tidak valid.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errors.gmail = 'Format email tidak valid.';
 
-    if (!buktiInput.files[0])
-      errors.bukti = 'Bukti pembayaran wajib diunggah.';
+    const ref = g('referral');
+    if (ref && !/^[A-Z0-9]{4,20}$/.test(ref))
+      errors.referral = 'Kode referral terdiri dari 4–20 huruf/angka.';
+
+    if (!buktiInput.files[0]) errors.bukti = 'Bukti pembayaran wajib diunggah.';
 
     return errors;
   }
 
-  // ---- Submit ----
+  /* ---------------- Kirim pendaftaran ---------------- */
   const form = $('#regForm');
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -199,53 +345,68 @@
     const errors = validateClient(form);
     if (Object.keys(errors).length) {
       for (const [k, v] of Object.entries(errors)) setFieldError(k, v);
-      const alert = $('#formAlert');
-      alert.textContent = 'Mohon lengkapi data yang ditandai.';
-      alert.classList.add('show');
-      $(`.field-error.show`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const alertBox = $('#formAlert');
+      alertBox.textContent = 'Mohon lengkapi data yang ditandai.';
+      alertBox.classList.add('show');
+      $('.field-error.show')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
     const btn = $('#submitBtn');
     btn.disabled = true;
     const origText = btn.textContent;
-    btn.innerHTML = '<span class="spinner"></span> Mengirim...';
+    btn.innerHTML = '<span class="spinner"></span> Mengirim…';
 
     try {
-      const fd = new FormData(form);
-      const res = await fetch('/api/registrations', {
-        method: 'POST',
-        body: fd,
-      });
-      const data = await res.json();
+      const res = await fetch('/api/registrations', { method: 'POST', body: new FormData(form) });
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Respons bukan JSON (mis. body ditolak platform karena terlalu besar)
+        throw new Error(
+          res.status === 413
+            ? 'Ukuran bukti pembayaran terlalu besar. Kompres gambarnya lalu coba lagi.'
+            : 'Server memberi respons yang tidak terduga. Coba lagi beberapa saat.'
+        );
+      }
 
       if (!res.ok) {
-        if (data.fields) {
-          for (const [k, v] of Object.entries(data.fields)) setFieldError(k, v);
-        }
-        const alert = $('#formAlert');
-        alert.textContent = data.error || 'Terjadi kesalahan. Coba lagi.';
-        alert.classList.add('show');
-        alert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (data.fields) for (const [k, v] of Object.entries(data.fields)) setFieldError(k, v);
+        const alertBox = $('#formAlert');
+        alertBox.textContent = data.error || 'Terjadi kesalahan. Coba lagi.';
+        alertBox.classList.add('show');
+        alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        refreshQuota();
         return;
       }
 
-      // Success
-      $('#regForm').style.display = 'none';
+      // Sukses
+      form.style.display = 'none';
       if (data.message) $('#successMsg').textContent = data.message;
       $('#successScreen').classList.add('show');
       $('#successScreen').scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Kuota langsung diperbarui dari respons server
+      if (typeof data.kuota_tersisa === 'number') {
+        renderQuota({ kuota_tersisa: data.kuota_tersisa });
+      }
+      refreshQuota();
     } catch (err) {
-      const alert = $('#formAlert');
-      alert.textContent = 'Gagal terhubung ke server. Periksa koneksi kamu.';
-      alert.classList.add('show');
+      const alertBox = $('#formAlert');
+      alertBox.textContent = err.message || 'Gagal terhubung ke server. Periksa koneksi kamu.';
+      alertBox.classList.add('show');
+      alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
       btn.disabled = false;
       btn.innerHTML = origText;
     }
   });
 
-  // ---- Live clear errors on input ----
+  $('#daftarLagi')?.addEventListener('click', () => location.reload());
+
+  /* ---------------- Bersihkan error saat mengetik ---------------- */
   $$('#regForm [name]').forEach((el) => {
     el.addEventListener('input', () => clearFieldError(el.name));
     el.addEventListener('change', () => clearFieldError(el.name));

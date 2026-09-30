@@ -3,75 +3,242 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard Admin — Widya Nusantara Academy</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <title data-title="Panel Admin — {nama}">Panel Admin — Widya Nusantara Academy</title>
   <link rel="stylesheet" href="/css/admin.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b1f4d'/><text x='50' y='68' font-size='58' text-anchor='middle' fill='%23ffcf3d' font-family='Arial' font-weight='bold'>W</text></svg>" />
 </head>
 <body>
 
-  <!-- LOGIN -->
-  <div class="login-wrap" id="loginView">
-    <form class="login-card" id="loginForm">
-      <div class="brand">
-        <span class="logo">W</span>
-        <div><b style="color:var(--navy)">Widya Nusantara</b><br /><small style="color:var(--muted)">Academy</small></div>
+<!-- ============================ LOGIN ============================ -->
+<div class="login-wrap" id="loginView" hidden>
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <div class="login-brand">
+      <span class="logo" data-logo>W</span>
+      <div>
+        <b data-brand="nama_situs">Widya Nusantara Academy</b>
+        <small>Panel Administrator</small>
       </div>
-      <h1>Dashboard Admin</h1>
-      <p class="sub">Masuk untuk mengelola data pendaftar</p>
-      <div class="alert error" id="loginAlert"></div>
-      <div class="field">
-        <label>Username</label>
-        <input class="input" type="text" name="username" autocomplete="username" placeholder="Masukkan username" />
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input class="input" type="password" name="password" autocomplete="current-password" placeholder="••••••••" />
-      </div>
-      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Masuk</button>
-      <p style="text-align:center;margin-top:16px;font-size:.85rem"><a href="/" style="color:var(--blue)">← Kembali ke situs</a></p>
-    </form>
-  </div>
+    </div>
+    <h1>Masuk Panel Admin</h1>
+    <p class="sub">Kelola pendaftar, affiliator, dan pengaturan situs.</p>
 
-  <!-- APP -->
-  <div class="admin-app" id="app">
-    <div class="topbar">
-      <div class="brand">
-        <span class="logo">W</span>
-        <div>Widya Admin<small>Rubela UTBK Indonesia</small></div>
-      </div>
-      <div class="right">
-        <span class="who" id="whoami"></span>
-        <a href="/" target="_blank">Lihat Situs ↗</a>
-        <button id="logoutBtn">Keluar</button>
+    <div class="alert error" id="loginAlert"></div>
+
+    <div class="field">
+      <label for="loginUser">Username</label>
+      <input class="input" type="text" id="loginUser" name="username" autocomplete="username"
+             placeholder="Masukkan username" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label for="loginPass">Password</label>
+      <div class="pw-wrap">
+        <input class="input" type="password" id="loginPass" name="password"
+               autocomplete="current-password" placeholder="Masukkan password" />
+        <button type="button" class="pw-toggle" data-pw-toggle="loginPass" aria-label="Tampilkan password">👁</button>
       </div>
     </div>
 
-    <div class="wrap">
-      <div class="tabs">
-        <button class="tab active" data-tab="pendaftar">📋 Data Pendaftar</button>
-        <button class="tab" data-tab="qris">📱 QRIS & Pembayaran</button>
-        <button class="tab" data-tab="pengaturan">⚙️ Pengaturan</button>
-      </div>
+    <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Masuk</button>
+    <p class="login-foot"><a href="/">← Kembali ke situs utama</a></p>
+  </form>
+</div>
 
-      <!-- PANEL: PENDAFTAR -->
-      <section class="panel active" id="panel-pendaftar">
-        <div class="stats" id="stats">
-          <div class="stat-card"><div class="label">Total Pendaftar</div><div class="value" id="stTotal">–</div></div>
-          <div class="stat-card"><div class="label">Menunggu Verifikasi</div><div class="value w" id="stWait">–</div></div>
-          <div class="stat-card"><div class="label">Terverifikasi</div><div class="value g" id="stOk">–</div></div>
-          <div class="stat-card"><div class="label">Kuota Terisi</div><div class="value" id="stKuota">–</div>
-            <div class="bar"><i id="stBar" style="width:0%"></i></div></div>
+<!-- ============================ APLIKASI ============================ -->
+<div class="admin-shell" id="app" hidden>
+  <div class="sb-backdrop" id="sbBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-brand">
+      <span class="logo" data-logo>W</span>
+      <div>
+        <b data-brand="nama_situs">Widya Nusantara</b>
+        <small>Panel Admin</small>
+      </div>
+    </div>
+
+    <nav class="sb-nav">
+      <button class="nav-item active" data-page="dashboard"><span class="ic">📊</span> Dashboard</button>
+
+      <div class="sb-group">Data</div>
+      <button class="nav-item" data-page="pendaftar">
+        <span class="ic">📋</span> Data Pendaftar
+        <span class="badge wait" id="badgeWait" hidden>0</span>
+      </button>
+      <button class="nav-item" data-page="affiliator">
+        <span class="ic">🤝</span> Affiliator
+        <span class="badge gold" id="badgeAff" hidden>0</span>
+      </button>
+
+      <div class="sb-group">Konfigurasi</div>
+      <button class="nav-item" data-page="pembayaran"><span class="ic">💳</span> Pembayaran &amp; QRIS</button>
+      <button class="nav-item" data-page="branding"><span class="ic">🎨</span> Logo &amp; Branding</button>
+      <button class="nav-item" data-page="pengaturan"><span class="ic">⚙️</span> Pengaturan</button>
+
+      <div class="sb-group">Sistem</div>
+      <button class="nav-item" data-page="admins" id="navAdmins" hidden><span class="ic">👥</span> Akun Admin</button>
+      <button class="nav-item" data-page="log"><span class="ic">🕘</span> Log Aktivitas</button>
+      <button class="nav-item" data-page="sistem"><span class="ic">❤️</span> Kesehatan Sistem</button>
+    </nav>
+
+    <div class="sb-foot">
+      <a href="/" target="_blank" rel="noopener"><span>🌐</span> Lihat Situs</a>
+      <button type="button" id="logoutBtn"><span>🚪</span> Keluar</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="sbToggle" aria-label="Menu">☰</button>
+      <div class="tb-title" id="pageTitle">Dashboard</div>
+      <div class="tb-right">
+        <span class="quota-chip" id="quotaChip">Memuat…</span>
+        <div class="who">
+          <b id="whoName">–</b>
+          <small id="whoRole">–</small>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn2">Keluar</button>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- ================= DASHBOARD ================= -->
+      <section class="page active" id="page-dashboard">
+        <div class="section-head">
+          <h2>Ringkasan</h2>
+          <button class="btn btn-outline btn-sm" id="dashRefresh">🔄 Muat ulang</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat-card">
+            <div class="label">Total Pendaftar</div>
+            <div class="value" id="stTotal">–</div>
+            <div class="sub"><span id="stHariIni">0</span> hari ini · <span id="stMingguIni">0</span> pekan ini</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Menunggu Verifikasi</div>
+            <div class="value w" id="stWait">–</div>
+            <div class="sub">perlu ditindaklanjuti</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Terverifikasi</div>
+            <div class="value g" id="stOk">–</div>
+            <div class="sub">estimasi <b id="stPendapatan">Rp0</b></div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Ditolak</div>
+            <div class="value d" id="stNo">–</div>
+            <div class="sub">kuota dikembalikan</div>
+          </div>
+        </div>
+
+        <div class="cards-2">
+          <div class="card">
+            <h3>🎟️ Kuota Pendaftaran <span class="badge" id="dashStatus">–</span></h3>
+            <p class="desc">Kuota tersisa berkurang otomatis setiap ada pendaftar baru. Pendaftar berstatus <b>Ditolak</b> tidak menghabiskan kuota.</p>
+            <div class="card-row">
+              <div>
+                <div style="font-size:2rem;font-weight:800;color:var(--navy)" id="stKuotaSisa">–</div>
+                <div class="cell-sub">kursi tersisa</div>
+              </div>
+              <div class="t-right">
+                <div style="font-weight:700" id="stKuotaTerisi">–</div>
+                <div class="cell-sub">terisi dari <span id="stKuotaTotal">–</span></div>
+              </div>
+            </div>
+            <div class="bar"><i id="stBar" style="width:0%"></i></div>
+            <div class="cell-sub" style="margin-top:6px"><span id="stPersen">0</span>% terisi · periode <b id="dashPeriode">–</b></div>
+          </div>
+
+          <div class="card">
+            <h3>🤝 Program Affiliasi</h3>
+            <p class="desc">Ringkasan akun affiliator dan komisi referral.</p>
+            <div class="kv-list">
+              <div class="row"><span>Total affiliator</span><span id="affTotal">–</span></div>
+              <div class="row"><span>Aktif</span><span id="affAktif">–</span></div>
+              <div class="row"><span>Menunggu persetujuan</span><span id="affPending">–</span></div>
+              <div class="row"><span>Komisi belum dibayar</span><span id="komisiTerutang">–</span></div>
+              <div class="row"><span>Komisi sudah dibayar</span><span id="komisiDibayar">–</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>📈 Pendaftar 14 Hari Terakhir</h3>
+          <div class="chart" id="chartTren"></div>
+        </div>
+
+        <div class="cards-2">
+          <div class="card">
+            <h3>🎓 Komposisi Status Pendidikan</h3>
+            <div class="hbars" id="barPendidikan"></div>
+          </div>
+          <div class="card">
+            <h3>🏆 Affiliator Teratas</h3>
+            <div id="topAffList"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>🕘 Aktivitas Terbaru</h3>
+          <div class="log-list" id="dashAktivitas"></div>
+        </div>
+      </section>
+
+      <!-- ================= PENDAFTAR ================= -->
+      <section class="page" id="page-pendaftar">
+        <div class="section-head">
+          <h2>Data Pendaftar</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" id="pReset">↺ Reset filter</button>
+            <button class="btn btn-gold btn-sm" id="pExport">⬇️ Export CSV</button>
+          </div>
         </div>
 
         <div class="toolbar">
-          <input class="input search" id="searchBox" placeholder="🔎 Cari nama, sekolah, WA, email, IG..." />
-          <select class="select" id="statusFilter">
-            <option value="">Semua Status</option>
+          <input class="input search" id="pSearch" placeholder="🔎 Cari nama, sekolah, WA, email, IG, kode referral…" />
+          <select class="select" id="pStatus">
+            <option value="">Semua status</option>
             <option value="MENUNGGU_VERIFIKASI">Menunggu Verifikasi</option>
             <option value="TERVERIFIKASI">Terverifikasi</option>
             <option value="DITOLAK">Ditolak</option>
           </select>
-          <button class="btn btn-gold" id="exportBtn">⬇️ Export CSV</button>
+          <select class="select" id="pPendidikan">
+            <option value="">Semua pendidikan</option>
+          </select>
+          <select class="select" id="pReferral">
+            <option value="">Referral: semua</option>
+            <option value="ada">Pakai referral</option>
+            <option value="tidak">Tanpa referral</option>
+          </select>
+          <select class="select" id="pBukti">
+            <option value="">Bukti: semua</option>
+            <option value="ada">Ada bukti</option>
+            <option value="tidak">Tanpa bukti</option>
+          </select>
+          <select class="select" id="pSort">
+            <option value="terbaru">Terbaru</option>
+            <option value="terlama">Terlama</option>
+            <option value="nama">Nama A–Z</option>
+            <option value="status">Status</option>
+          </select>
+          <input class="input" type="date" id="pDari" title="Dari tanggal" />
+          <input class="input" type="date" id="pSampai" title="Sampai tanggal" />
+          <select class="select" id="pPageSize">
+            <option value="20">20 / halaman</option>
+            <option value="50">50 / halaman</option>
+            <option value="100">100 / halaman</option>
+          </select>
+        </div>
+
+        <div class="bulkbar" id="bulkBar">
+          <b><span id="bulkCount">0</span> dipilih</b>
+          <div class="spacer"></div>
+          <button class="btn btn-success btn-sm" id="bulkVerif">✓ Verifikasi</button>
+          <button class="btn btn-warn btn-sm" id="bulkWait">⏳ Menunggu</button>
+          <button class="btn btn-danger btn-sm" id="bulkTolak">✕ Tolak</button>
+          <button class="btn btn-ghost btn-sm" id="bulkClear" style="color:#fff">Batal</button>
         </div>
 
         <div class="table-card">
@@ -79,78 +246,444 @@
             <table>
               <thead>
                 <tr>
+                  <th style="width:38px"><input type="checkbox" class="chk" id="pChkAll" aria-label="Pilih semua" /></th>
                   <th>Pendaftar</th>
-                  <th>Status Pendidikan</th>
                   <th>Kontak</th>
+                  <th>Pendidikan</th>
                   <th>Referral</th>
-                  <th>Tgl Daftar</th>
+                  <th>Nominal</th>
+                  <th class="t-center">Bukti</th>
                   <th>Status</th>
-                  <th>Aksi</th>
+                  <th>Tgl Daftar</th>
+                  <th class="t-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody id="tableBody">
-                <tr><td colspan="7"><div class="loading-center"><span class="spinner dark"></span> Memuat data...</div></td></tr>
+              <tbody id="pTableBody">
+                <tr><td colspan="10"><div class="loading-center"><span class="spinner dark"></span> Memuat data…</div></td></tr>
               </tbody>
             </table>
           </div>
-          <div class="pagination" id="pagination"></div>
+          <div class="pagination" id="pPagination"></div>
         </div>
       </section>
 
-      <!-- PANEL: QRIS -->
-      <section class="panel" id="panel-qris">
-        <div class="card-block">
-          <h3>Gambar QRIS Pembayaran</h3>
-          <p class="desc">Unggah gambar QRIS agar calon murid dapat membayar melalui scan QR. Gambar akan tampil otomatis pada halaman pendaftaran. Format JPG/PNG/WebP, maks 4 MB.</p>
-          <div class="qris-current" id="qrisCurrent" style="display:none">
-            <img id="qrisCurrentImg" alt="QRIS saat ini" />
-            <div style="margin-top:12px"><button class="btn btn-danger btn-sm" id="qrisDelete">🗑️ Hapus QRIS</button></div>
+      <!-- ================= AFFILIATOR ================= -->
+      <section class="page" id="page-affiliator">
+        <div class="section-head">
+          <h2>Affiliator &amp; Kode Referral</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="aTambah">＋ Tambah Affiliator</button>
+            <button class="btn btn-gold btn-sm" id="aExport">⬇️ Export CSV</button>
           </div>
-          <div class="qris-upload" id="qrisUpload">
-            <div style="font-size:2rem">📤</div>
-            <p style="color:var(--muted);margin-top:6px"><b style="color:var(--blue)">Klik untuk memilih</b> gambar QRIS</p>
-            <input type="file" id="qrisInput" accept="image/jpeg,image/png,image/webp" hidden />
+        </div>
+
+        <div class="toolbar">
+          <input class="input search" id="aSearch" placeholder="🔎 Cari nama, email, kode referral, WA…" />
+          <select class="select" id="aStatus">
+            <option value="">Semua status</option>
+            <option value="PENDING">Menunggu Persetujuan</option>
+            <option value="AKTIF">Aktif</option>
+            <option value="NONAKTIF">Nonaktif</option>
+            <option value="DITOLAK">Ditolak</option>
+          </select>
+        </div>
+
+        <div class="table-card">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kode</th>
+                  <th>Affiliator</th>
+                  <th>Kontak</th>
+                  <th class="t-center">Referral</th>
+                  <th class="t-center">Verified</th>
+                  <th>Komisi</th>
+                  <th>Status</th>
+                  <th class="t-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="aTableBody">
+                <tr><td colspan="8"><div class="loading-center"><span class="spinner dark"></span> Memuat data…</div></td></tr>
+              </tbody>
+            </table>
           </div>
+          <div class="pagination" id="aPagination"></div>
         </div>
       </section>
 
-      <!-- PANEL: PENGATURAN -->
-      <section class="panel" id="panel-pengaturan">
-        <div class="card-block">
-          <h3>Informasi Pembayaran & Kontak</h3>
-          <p class="desc">Data ini tampil pada halaman pendaftaran publik.</p>
-          <form id="settingsForm">
-            <div class="settings-grid">
-              <div class="field"><label>Kuota Total</label><input class="input" type="number" name="kuota_total" /></div>
-              <div class="field"><label>Biaya (Rp)</label><input class="input" type="number" name="biaya" /></div>
-              <div class="field"><label>Kode Unik Pembayaran</label><input class="input" type="text" name="kode_unik" /></div>
-              <div class="field"><label>Periode Pendaftaran</label><input class="input" type="text" name="periode_pendaftaran" /></div>
-              <div class="field"><label>Nama Bank</label><input class="input" type="text" name="bank_nama" /></div>
-              <div class="field"><label>Nomor Rekening</label><input class="input" type="text" name="bank_rekening" /></div>
-              <div class="field"><label>Atas Nama</label><input class="input" type="text" name="bank_atasnama" /></div>
-              <div class="field"><label>Nomor WhatsApp</label><input class="input" type="text" name="wa_kontak" /></div>
-              <div class="field full"><label>Email Kontak</label><input class="input" type="email" name="email_kontak" /></div>
+      <!-- ================= PEMBAYARAN ================= -->
+      <section class="page" id="page-pembayaran">
+        <div class="section-head"><h2>Pembayaran &amp; QRIS</h2></div>
+
+        <div class="card">
+          <h3>🏦 Rekening &amp; Biaya</h3>
+          <p class="desc">Data ini ditampilkan pada formulir pendaftaran publik.</p>
+          <form class="js-settings-form" id="formPembayaran">
+            <div class="alert" data-alert></div>
+            <div class="grid-2">
+              <div class="field">
+                <label>Biaya Bimbel (Rp)</label>
+                <input class="input" type="number" name="biaya" min="0" step="1000" />
+                <div class="field-error" data-for="biaya"></div>
+              </div>
+              <div class="field">
+                <label>Kode Unik Pembayaran</label>
+                <input class="input" type="text" name="kode_unik" inputmode="numeric" maxlength="6" />
+                <div class="hint">3 angka terakhir nominal transfer, mis. 550 → Rp160.550</div>
+                <div class="field-error" data-for="kode_unik"></div>
+              </div>
+              <div class="field">
+                <label>Nama Bank / E-wallet</label>
+                <input class="input" type="text" name="bank_nama" />
+                <div class="field-error" data-for="bank_nama"></div>
+              </div>
+              <div class="field">
+                <label>Nomor Rekening</label>
+                <input class="input" type="text" name="bank_rekening" inputmode="numeric" />
+                <div class="field-error" data-for="bank_rekening"></div>
+              </div>
+              <div class="field full">
+                <label>Atas Nama</label>
+                <input class="input" type="text" name="bank_atasnama" />
+                <div class="field-error" data-for="bank_atasnama"></div>
+              </div>
             </div>
-            <div style="margin-top:18px"><button type="submit" class="btn btn-primary" id="settingsBtn">💾 Simpan Pengaturan</button></div>
+            <button type="submit" class="btn btn-primary">💾 Simpan</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>📱 Gambar QRIS</h3>
+          <p class="desc">Unggah QRIS agar calon murid bisa membayar lewat scan. Format JPG/PNG/WebP, maksimal 3 MB.</p>
+          <div class="upbox">
+            <div class="up-preview" id="qrisPreview"><div class="none">Belum ada QRIS</div></div>
+            <div>
+              <div class="dropzone" id="qrisDrop">
+                <div class="ic">📤</div>
+                <p><b>Klik untuk memilih</b> atau seret gambar ke sini</p>
+                <input type="file" id="qrisInput" accept="image/jpeg,image/png,image/webp" hidden />
+              </div>
+              <p class="cell-sub" id="qrisMeta" style="margin-top:10px"></p>
+              <button class="btn btn-danger btn-sm" id="qrisDelete" hidden>🗑️ Hapus QRIS</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= BRANDING ================= -->
+      <section class="page" id="page-branding">
+        <div class="section-head"><h2>Logo &amp; Branding</h2></div>
+
+        <div class="card">
+          <h3>🏷️ Identitas Situs</h3>
+          <p class="desc">Teks logo dipakai bila tidak ada gambar logo yang diunggah.</p>
+          <form class="js-settings-form" id="formIdentitas">
+            <div class="alert" data-alert></div>
+            <div class="grid-2">
+              <div class="field">
+                <label>Nama Situs</label>
+                <input class="input" type="text" name="nama_situs" maxlength="80" />
+                <div class="field-error" data-for="nama_situs"></div>
+              </div>
+              <div class="field">
+                <label>Teks Logo (maks 3 huruf)</label>
+                <input class="input" type="text" name="logo_teks" maxlength="3" />
+                <div class="hint">Contoh: <b>W</b> atau <b>WNA</b>. Tampil bila gambar logo belum diunggah.</div>
+                <div class="field-error" data-for="logo_teks"></div>
+              </div>
+              <div class="field full">
+                <label>Tagline</label>
+                <textarea class="input" name="tagline" maxlength="220" rows="2"></textarea>
+                <div class="field-error" data-for="tagline"></div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">💾 Simpan</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>🖼️ Gambar Logo</h3>
+          <p class="desc">Mengganti kotak logo &ldquo;W&rdquo; di seluruh situs (header, footer, panel admin, dashboard affiliator). Disarankan PNG transparan persegi, minimal 128×128 px.</p>
+          <div class="upbox">
+            <div class="up-preview" id="logoPreview"><div class="none">Memakai teks logo</div></div>
+            <div>
+              <div class="dropzone" id="logoDrop">
+                <div class="ic">🖼️</div>
+                <p><b>Klik untuk memilih</b> gambar logo (maks 3 MB)</p>
+                <input type="file" id="logoInput" accept="image/jpeg,image/png,image/webp" hidden />
+              </div>
+              <p class="cell-sub" id="logoMeta" style="margin-top:10px"></p>
+              <button class="btn btn-danger btn-sm" id="logoDelete" hidden>🗑️ Hapus logo</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>🔖 Favicon (Ikon Tab Browser)</h3>
+          <p class="desc">Ikon kecil yang tampil di tab Chrome dan saat situs di-bookmark. Gunakan PNG persegi 64×64 atau 128×128 px agar tajam.</p>
+          <div class="upbox">
+            <div class="up-preview" id="favPreview"><div class="none">Memakai ikon bawaan</div></div>
+            <div>
+              <div class="dropzone" id="favDrop">
+                <div class="ic">🔖</div>
+                <p><b>Klik untuk memilih</b> gambar favicon (maks 3 MB)</p>
+                <input type="file" id="favInput" accept="image/jpeg,image/png,image/webp" hidden />
+              </div>
+              <p class="cell-sub" id="favMeta" style="margin-top:10px"></p>
+              <button class="btn btn-danger btn-sm" id="favDelete" hidden>🗑️ Hapus favicon</button>
+              <div class="alert info show" style="margin-top:12px">
+                Browser menyimpan favicon di cache. Setelah mengganti, tekan <b>Ctrl+Shift+R</b> (atau buka tab baru) untuk melihat perubahannya.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PENGATURAN ================= -->
+      <section class="page" id="page-pengaturan">
+        <div class="section-head"><h2>Pengaturan</h2></div>
+
+        <div class="cards-2">
+          <div class="card">
+            <h3>🎓 Program &amp; Kuota</h3>
+            <form class="js-settings-form" id="formProgram">
+              <div class="alert" data-alert></div>
+              <div class="field">
+                <label>Kuota Total Murid</label>
+                <input class="input" type="number" name="kuota_total" min="1" />
+                <div class="hint">Kuota tersisa dihitung otomatis: kuota total − pendaftar yang tidak ditolak.</div>
+                <div class="field-error" data-for="kuota_total"></div>
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label>Durasi Program (bulan)</label>
+                  <input class="input" type="number" name="durasi_program" min="1" />
+                  <div class="field-error" data-for="durasi_program"></div>
+                </div>
+                <div class="field">
+                  <label>Jumlah Try Out</label>
+                  <input class="input" type="number" name="jumlah_tryout" min="0" />
+                  <div class="field-error" data-for="jumlah_tryout"></div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary">💾 Simpan</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>🗓️ Periode Pendaftaran</h3>
+            <form class="js-settings-form" id="formPeriode">
+              <div class="alert" data-alert></div>
+              <div class="field">
+                <label>Teks Periode (tampil di situs)</label>
+                <input class="input" type="text" name="periode_pendaftaran" maxlength="100" />
+                <div class="field-error" data-for="periode_pendaftaran"></div>
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label>Tanggal Mulai</label>
+                  <input class="input" type="date" name="periode_mulai" />
+                  <div class="field-error" data-for="periode_mulai"></div>
+                </div>
+                <div class="field">
+                  <label>Tanggal Selesai</label>
+                  <input class="input" type="date" name="periode_selesai" />
+                  <div class="field-error" data-for="periode_selesai"></div>
+                </div>
+              </div>
+              <div class="field">
+                <label class="switch">
+                  <input type="checkbox" name="pendaftaran_aktif" value="1" />
+                  <span class="track"></span>
+                  <span class="switch-label">Pendaftaran dibuka</span>
+                </label>
+                <div class="hint">Jika dimatikan, formulir pendaftaran ditutup meski kuota masih ada.</div>
+              </div>
+              <button type="submit" class="btn btn-primary">💾 Simpan</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>📞 Kontak</h3>
+            <form class="js-settings-form" id="formKontak">
+              <div class="alert" data-alert></div>
+              <div class="field">
+                <label>Nomor WhatsApp</label>
+                <input class="input" type="text" name="wa_kontak" inputmode="numeric" />
+                <div class="hint">Format lokal, mis. 0895360396759</div>
+                <div class="field-error" data-for="wa_kontak"></div>
+              </div>
+              <div class="field">
+                <label>Email Kontak</label>
+                <input class="input" type="email" name="email_kontak" />
+                <div class="field-error" data-for="email_kontak"></div>
+              </div>
+              <div class="field">
+                <label>Username Instagram</label>
+                <input class="input" type="text" name="instagram_kontak" placeholder="rubelaindonesia" />
+                <div class="hint">Tanpa tanda @</div>
+                <div class="field-error" data-for="instagram_kontak"></div>
+              </div>
+              <button type="submit" class="btn btn-primary">💾 Simpan</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h3>🤝 Program Affiliasi</h3>
+            <form class="js-settings-form" id="formAffiliasi">
+              <div class="alert" data-alert></div>
+              <div class="field">
+                <label class="switch">
+                  <input type="checkbox" name="affiliate_aktif" value="1" />
+                  <span class="track"></span>
+                  <span class="switch-label">Program affiliasi aktif</span>
+                </label>
+                <div class="hint">Jika dimatikan, pendaftaran affiliator &amp; kode referral ditutup.</div>
+              </div>
+              <div class="field">
+                <label class="switch">
+                  <input type="checkbox" name="affiliate_auto_approve" value="1" />
+                  <span class="track"></span>
+                  <span class="switch-label">Setujui affiliator otomatis</span>
+                </label>
+                <div class="hint">Jika dimatikan, akun affiliator baru berstatus <b>Menunggu Persetujuan</b>.</div>
+              </div>
+              <div class="field">
+                <label>Komisi per Referral (Rp)</label>
+                <input class="input" type="number" name="komisi_referral" min="0" step="1000" />
+                <div class="hint">Dihitung untuk referral yang sudah <b>Terverifikasi</b>.</div>
+                <div class="field-error" data-for="komisi_referral"></div>
+              </div>
+              <div class="field">
+                <label>Syarat &amp; Ketentuan Affiliasi</label>
+                <textarea class="input" name="affiliate_syarat" rows="4" maxlength="1200"></textarea>
+                <div class="field-error" data-for="affiliate_syarat"></div>
+              </div>
+              <button type="submit" class="btn btn-primary">💾 Simpan</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>🔐 Ganti Password Saya</h3>
+          <p class="desc">Password disimpan dalam bentuk hash scrypt — tidak bisa dibaca siapa pun, termasuk dari kode sumber.</p>
+          <form id="formPassword">
+            <div class="alert" data-alert></div>
+            <div class="grid-3">
+              <div class="field">
+                <label>Password Lama</label>
+                <div class="pw-wrap">
+                  <input class="input" type="password" id="pwLama" name="password_lama" autocomplete="current-password" />
+                  <button type="button" class="pw-toggle" data-pw-toggle="pwLama">👁</button>
+                </div>
+                <div class="field-error" data-for="password_lama"></div>
+              </div>
+              <div class="field">
+                <label>Password Baru</label>
+                <div class="pw-wrap">
+                  <input class="input" type="password" id="pwBaru" name="password_baru" autocomplete="new-password" />
+                  <button type="button" class="pw-toggle" data-pw-toggle="pwBaru">👁</button>
+                </div>
+                <div class="hint">Min. 8 karakter, memuat huruf &amp; angka.</div>
+                <div class="field-error" data-for="password_baru"></div>
+              </div>
+              <div class="field">
+                <label>Ulangi Password Baru</label>
+                <input class="input" type="password" name="password_baru2" autocomplete="new-password" />
+                <div class="field-error" data-for="password_baru2"></div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">🔐 Ubah Password</button>
           </form>
         </div>
       </section>
-    </div>
+
+      <!-- ================= AKUN ADMIN ================= -->
+      <section class="page" id="page-admins">
+        <div class="section-head">
+          <h2>Akun Admin</h2>
+          <button class="btn btn-primary btn-sm" id="adTambah">＋ Tambah Admin</button>
+        </div>
+        <div class="alert info show">
+          <b>Super Admin</b> dapat mengelola akun admin lain. <b>Admin</b> biasa hanya mengelola pendaftar, affiliator, dan pengaturan.
+        </div>
+        <div class="table-card">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th><th>Nama</th><th>Email</th><th>Peran</th>
+                  <th>Status</th><th>Login Terakhir</th><th class="t-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="adTableBody">
+                <tr><td colspan="7"><div class="loading-center"><span class="spinner dark"></span> Memuat…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= LOG ================= -->
+      <section class="page" id="page-log">
+        <div class="section-head">
+          <h2>Log Aktivitas</h2>
+          <button class="btn btn-outline btn-sm" id="lClear" hidden>🧹 Bersihkan log &gt; 30 hari</button>
+        </div>
+        <div class="toolbar">
+          <input class="input search" id="lSearch" placeholder="🔎 Cari aksi, pelaku, detail…" />
+          <select class="select" id="lType">
+            <option value="">Semua pelaku</option>
+            <option value="ADMIN">Admin</option>
+            <option value="AFFILIATOR">Affiliator</option>
+            <option value="PUBLIC">Publik</option>
+            <option value="SYSTEM">Sistem</option>
+          </select>
+        </div>
+        <div class="table-card">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Objek</th><th>Detail</th><th>IP</th></tr>
+              </thead>
+              <tbody id="lTableBody">
+                <tr><td colspan="6"><div class="loading-center"><span class="spinner dark"></span> Memuat…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" id="lPagination"></div>
+        </div>
+      </section>
+
+      <!-- ================= SISTEM ================= -->
+      <section class="page" id="page-sistem">
+        <div class="section-head">
+          <h2>Kesehatan Sistem</h2>
+          <button class="btn btn-outline btn-sm" id="sysRefresh">🔄 Muat ulang</button>
+        </div>
+        <div id="sysBody"><div class="loading-center"><span class="spinner dark"></span> Memuat…</div></div>
+      </section>
+
+    </main>
   </div>
+</div>
 
-  <!-- DETAIL MODAL -->
-  <div class="modal-overlay" id="detailModal">
-    <div class="modal">
-      <div class="modal-head">
-        <h3>Detail Pendaftar</h3>
-        <button class="modal-close" id="modalClose">✕</button>
-      </div>
-      <div class="modal-body" id="modalBody"></div>
+<!-- ============================ MODAL ============================ -->
+<div class="modal-overlay" id="modal">
+  <div class="modal" id="modalBox">
+    <div class="modal-head">
+      <h3 id="modalTitle">–</h3>
+      <button class="modal-close" id="modalClose" aria-label="Tutup">✕</button>
     </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
   </div>
+</div>
 
-  <div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>
 
-  <script src="/js/admin.js"></script>
+<script src="/js/branding.js"></script>
+<script src="/js/admin.js"></script>
 </body>
 </html>

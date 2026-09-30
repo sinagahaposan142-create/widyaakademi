@@ -1,0 +1,112 @@
+/* ============================================================
+   Widya Nusantara Academy — Dashboard Affiliator
+   Melengkapi admin.css (token warna, tombol, kartu, tabel).
+   ============================================================ */
+.aff-body { background: var(--bg); }
+
+.aff-header {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(255, 255, 255, .93); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; padding: 11px 20px;
+}
+.aff-brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+.aff-brand:hover { text-decoration: none; }
+.aff-brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.aff-brand-text small { font-size: .72rem; color: var(--muted); font-weight: 600; }
+.aff-brand-text b { font-size: 1rem; color: var(--navy); }
+.aff-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.aff-main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 60px; }
+
+/* ---------- Hero ---------- */
+.aff-hero {
+  background: radial-gradient(800px 400px at 85% -20%, #1b3aa0 0%, transparent 60%),
+              linear-gradient(160deg, var(--navy), var(--navy-2) 70%);
+  color: #fff; border-radius: 20px; padding: 34px; margin-bottom: 22px;
+  box-shadow: var(--shadow);
+}
+.aff-hero h1 { font-size: clamp(1.5rem, 4vw, 2.1rem); font-weight: 800; line-height: 1.2; }
+.aff-hero .hl { color: var(--gold-2); }
+.aff-hero p { color: #cfdaf5; margin-top: 12px; max-width: 620px; font-size: .98rem; }
+.aff-hero-steps { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+.aff-hero-steps > div {
+  display: flex; align-items: center; gap: 9px; font-size: .88rem; font-weight: 600;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .18);
+  padding: 9px 15px; border-radius: 999px;
+}
+.aff-hero-steps .n {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--gold);
+  color: var(--navy); display: grid; place-items: center; font-weight: 800; font-size: .78rem; flex: none;
+}
+
+/* ---------- Kartu auth ---------- */
+.auth-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); max-width: 680px; margin: 0 auto; overflow: hidden;
+}
+.auth-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.auth-tab {
+  flex: 1; background: transparent; border: none; cursor: pointer; font-family: inherit;
+  font-size: .93rem; font-weight: 700; color: var(--muted); padding: 15px 10px;
+  border-bottom: 3px solid transparent; transition: .15s;
+}
+.auth-tab:hover { color: var(--navy); background: rgba(36, 83, 209, .05); }
+.auth-tab.active { color: var(--blue); border-bottom-color: var(--blue); background: #fff; }
+.auth-pane { display: none; padding: 24px; }
+.auth-pane.active { display: block; }
+.auth-foot { text-align: center; margin-top: 15px; font-size: .86rem; color: var(--muted); }
+
+/* ---------- Dashboard ---------- */
+.aff-welcome {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.aff-welcome h1 { font-size: 1.35rem; color: var(--navy); }
+
+.kode-card {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap; margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--navy), var(--navy-2));
+  border-color: transparent; color: #fff;
+}
+.kode-card .kode-label {
+  font-size: .74rem; text-transform: uppercase; letter-spacing: 1px;
+  color: #9fb4e6; font-weight: 750;
+}
+.kode-card .kode-big {
+  font-size: clamp(1.8rem, 6vw, 2.5rem); font-weight: 800;
+  color: var(--gold-2); letter-spacing: 3px; line-height: 1.2; margin: 2px 0 6px;
+}
+.kode-card .cell-sub { color: #b9c8ec; }
+.link-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+.link-row .input {
+  flex: 1; min-width: 200px; background: rgba(255, 255, 255, .1);
+  border-color: rgba(255, 255, 255, .25); color: #fff; font-size: .82rem;
+}
+.link-row .input:focus { border-color: var(--gold-2); box-shadow: none; }
+
+.success-card { max-width: 560px; margin: 40px auto; text-align: center; padding: 38px 28px; }
+.success-card h1 { font-size: 1.5rem; color: var(--navy); margin-bottom: 10px; }
+.success-card p { color: var(--muted); font-size: .95rem; }
+.success-card .big-check {
+  width: 78px; height: 78px; margin: 0 auto 18px; border-radius: 50%;
+  background: var(--success-bg); color: var(--success);
+  display: grid; place-items: center; font-size: 2.4rem;
+}
+.success-card .credbox { justify-content: center; }
+
+.aff-footer {
+  border-top: 1px solid var(--border); background: #fff;
+  padding: 24px 18px; text-align: center; font-size: .86rem; color: var(--muted);
+}
+.aff-footer p + p { margin-top: 4px; }
+
+@media (max-width: 640px) {
+  .aff-main { padding: 16px 12px 50px; }
+  .aff-hero { padding: 24px 20px; border-radius: 16px; }
+  .auth-pane { padding: 18px 16px; }
+  .kode-card { flex-direction: column; align-items: stretch; }
+  .kode-card .btn { width: 100%; }
+  .link-row .btn, .link-row .input { width: 100%; flex: none; }
+}

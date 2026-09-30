@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title data-title="Program Affiliasi — {nama}">Program Affiliasi — Widya Nusantara Academy</title>
+  <meta name="description" content="Daftar jadi affiliator Widya Nusantara Academy, dapatkan kode referral, dan pantau siapa saja yang mendaftar memakai kodemu." />
+  <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="stylesheet" href="/css/affiliate.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b1f4d'/><text x='50' y='68' font-size='58' text-anchor='middle' fill='%23ffcf3d' font-family='Arial' font-weight='bold'>W</text></svg>" />
+</head>
+<body class="aff-body">
+
+<header class="aff-header">
+  <a class="aff-brand" href="/">
+    <span class="logo" data-logo>W</span>
+    <span class="aff-brand-text">
+      <small data-brand="nama_situs">Widya Nusantara Academy</small>
+      <b>Program Affiliasi</b>
+    </span>
+  </a>
+  <div class="aff-header-right">
+    <a class="btn btn-ghost btn-sm" href="/">← Situs Utama</a>
+    <button class="btn btn-outline btn-sm" id="logoutBtn" hidden>Keluar</button>
+  </div>
+</header>
+
+<main class="aff-main">
+
+  <!-- ==================== AUTH ==================== -->
+  <section id="authView" hidden>
+    <div class="aff-hero">
+      <h1>Ajak Teman, <span class="hl">Dapat Komisi</span></h1>
+      <p>
+        Daftar jadi affiliator, dapatkan <b>kode referral pribadi</b>, lalu bagikan ke teman-temanmu.
+        Setiap pendaftar yang memakai kodemu dan terverifikasi memberi kamu komisi
+        <b class="hl" id="heroKomisi">Rp10.000</b>.
+      </p>
+      <div class="aff-hero-steps">
+        <div><span class="n">1</span> Daftar akun affiliator</div>
+        <div><span class="n">2</span> Bagikan kode referralmu</div>
+        <div><span class="n">3</span> Pantau &amp; terima komisi</div>
+      </div>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-auth="login">Masuk</button>
+        <button class="auth-tab" data-auth="register">Daftar Affiliator</button>
+      </div>
+
+      <!-- LOGIN -->
+      <form id="loginForm" class="auth-pane active">
+        <div class="alert" data-alert></div>
+        <div class="field">
+          <label>Email atau Kode Referral</label>
+          <input class="input" name="identifier" autocomplete="username" placeholder="email@contoh.com atau KODE123" spellcheck="false" />
+          <div class="field-error" data-for="identifier"></div>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="pw-wrap">
+            <input class="input" type="password" id="loginPw" name="password" autocomplete="current-password" />
+            <button type="button" class="pw-toggle" data-pw-toggle="loginPw">👁</button>
+          </div>
+          <div class="field-error" data-for="password"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Masuk ke Dashboard</button>
+        <p class="auth-foot">Belum punya akun? <a href="#" data-goto="register">Daftar affiliator</a></p>
+      </form>
+
+      <!-- REGISTER -->
+      <form id="registerForm" class="auth-pane">
+        <div class="alert" data-alert></div>
+        <div class="alert warn show" id="affClosedNotice" hidden>
+          Pendaftaran affiliator sedang ditutup oleh admin.
+        </div>
+
+        <div class="grid-2">
+          <div class="field full">
+            <label>Nama Lengkap <span style="color:var(--danger)">*</span></label>
+            <input class="input" name="nama_lengkap" placeholder="Nama sesuai rekening" />
+            <div class="field-error" data-for="nama_lengkap"></div>
+          </div>
+          <div class="field">
+            <label>Email <span style="color:var(--danger)">*</span></label>
+            <input class="input" type="email" name="email" placeholder="nama@gmail.com" />
+            <div class="hint">Dipakai untuk masuk ke dashboard.</div>
+            <div class="field-error" data-for="email"></div>
+          </div>
+          <div class="field">
+            <label>Nomor WhatsApp <span style="color:var(--danger)">*</span></label>
+            <input class="input" name="nomor_wa" inputmode="numeric" placeholder="08xxxxxxxxxx" />
+            <div class="field-error" data-for="nomor_wa"></div>
+          </div>
+          <div class="field">
+            <label>Username Instagram</label>
+            <input class="input" name="instagram" placeholder="username" />
+            <div class="field-error" data-for="instagram"></div>
+          </div>
+          <div class="field">
+            <label>Asal Sekolah / Kampus</label>
+            <input class="input" name="asal_institusi" />
+            <div class="field-error" data-for="asal_institusi"></div>
+          </div>
+          <div class="field full">
+            <label>Kode Referral yang Diinginkan</label>
+            <input class="input mono" name="kode_referral" placeholder="Kosongkan untuk dibuat otomatis" maxlength="20" />
+            <div class="hint">4–20 huruf/angka tanpa spasi. Contoh: <b>HAPOSAN26</b></div>
+            <div class="field-error" data-for="kode_referral"></div>
+          </div>
+
+          <div class="field full">
+            <div class="subcard" style="margin:0">
+              <h4>💳 Rekening Penerimaan Komisi</h4>
+              <div class="grid-2">
+                <div class="field">
+                  <label>Bank / E-wallet</label>
+                  <input class="input" name="bank_nama" placeholder="mis. Bank Neo / DANA" />
+                </div>
+                <div class="field">
+                  <label>Nomor Rekening</label>
+                  <input class="input" name="bank_rekening" inputmode="numeric" />
+                  <div class="field-error" data-for="bank_rekening"></div>
+                </div>
+                <div class="field full">
+                  <label>Atas Nama</label>
+                  <input class="input" name="bank_atasnama" />
+                </div>
+              </div>
+              <p class="cell-sub">Bisa dilengkapi nanti dari dashboard.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Password <span style="color:var(--danger)">*</span></label>
+            <div class="pw-wrap">
+              <input class="input" type="password" id="regPw" name="password" autocomplete="new-password" />
+              <button type="button" class="pw-toggle" data-pw-toggle="regPw">👁</button>
+            </div>
+            <div class="hint">Min. 8 karakter, memuat huruf &amp; angka.</div>
+            <div class="field-error" data-for="password"></div>
+          </div>
+          <div class="field">
+            <label>Ulangi Password <span style="color:var(--danger)">*</span></label>
+            <input class="input" type="password" name="password_confirm" autocomplete="new-password" />
+            <div class="field-error" data-for="password_confirm"></div>
+          </div>
+        </div>
+
+        <div class="subcard" id="syaratBox">
+          <h4>📜 Syarat &amp; Ketentuan</h4>
+          <p class="cell-sub" id="syaratText">Memuat…</p>
+          <label class="switch" style="margin-top:12px">
+            <input type="checkbox" name="setuju" value="1" />
+            <span class="track"></span>
+            <span class="switch-label">Saya menyetujui syarat &amp; ketentuan</span>
+          </label>
+          <div class="field-error" data-for="setuju"></div>
+        </div>
+
+        <button type="submit" class="btn btn-gold btn-block" style="margin-top:16px">Daftar Sebagai Affiliator</button>
+        <p class="auth-foot">Sudah punya akun? <a href="#" data-goto="login">Masuk di sini</a></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ==================== DASHBOARD ==================== -->
+  <section id="dashView" hidden>
+    <div class="aff-welcome">
+      <div>
+        <h1>Hai, <span id="affNama">Affiliator</span> 👋</h1>
+        <p class="cell-sub">Pantau siapa saja yang mendaftar memakai kode referralmu.</p>
+      </div>
+      <button class="btn btn-outline btn-sm" id="dashRefresh">🔄 Muat ulang</button>
+    </div>
+
+    <div class="card kode-card">
+      <div>
+        <div class="kode-label">Kode Referral Kamu</div>
+        <div class="kode-big mono" id="affKode">–</div>
+        <div class="cell-sub">Bagikan kode ini, atau kirim tautan di bawah agar kode terisi otomatis.</div>
+        <div class="link-row">
+          <input class="input mono" id="affLink" readonly />
+          <button class="btn btn-outline btn-sm" id="copyLink">📋 Salin</button>
+          <a class="btn btn-success btn-sm" id="shareWa" target="_blank" rel="noopener">💬 Bagikan</a>
+        </div>
+      </div>
+      <button class="btn btn-gold" id="copyKode">📋 Salin Kode</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="label">Total Referral</div>
+        <div class="value b" id="sTotal">–</div>
+        <div class="sub"><span id="sBulan">0</span> bulan ini</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Terverifikasi</div>
+        <div class="value g" id="sOk">–</div>
+        <div class="sub">menghasilkan komisi</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Menunggu Verifikasi</div>
+        <div class="value w" id="sWait">–</div>
+        <div class="sub">sedang diproses admin</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Komisi Belum Dibayar</div>
+        <div class="value" id="sSisa">–</div>
+        <div class="sub">total diperoleh <b id="sTotalKomisi">Rp0</b></div>
+      </div>
+    </div>
+
+    <div class="cards-2">
+      <div class="card">
+        <h3>💰 Ringkasan Komisi</h3>
+        <div class="kv-list">
+          <div class="row"><span>Komisi per referral terverifikasi</span><span id="kPer">–</span></div>
+          <div class="row"><span>Total komisi diperoleh</span><span id="kDiperoleh">–</span></div>
+          <div class="row"><span>Sudah dibayar</span><span id="kDibayar">–</span></div>
+          <div class="row"><span><b>Belum dibayar</b></span><span id="kSisa">–</span></div>
+        </div>
+        <h4 style="margin:16px 0 8px;font-size:.9rem;color:var(--navy)">Riwayat Pembayaran</h4>
+        <div id="payoutList"><p class="cell-sub">Belum ada pembayaran.</p></div>
+      </div>
+
+      <div class="card">
+        <h3>📈 Tren Referral</h3>
+        <p class="desc">Pendaftar yang memakai kodemu.</p>
+        <div class="chart" id="affChart"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head" style="margin-bottom:12px">
+        <h3 style="margin:0">👥 Pengguna Kode Referral Kamu</h3>
+        <button class="btn btn-gold btn-sm" id="affExport">⬇️ Export CSV</button>
+      </div>
+      <div class="alert info show">
+        Demi privasi pendaftar, nomor WhatsApp dan email ditampilkan sebagian.
+      </div>
+      <div class="toolbar">
+        <input class="input search" id="rSearch" placeholder="🔎 Cari nama atau sekolah…" />
+        <select class="select" id="rStatus">
+          <option value="">Semua status</option>
+          <option value="MENUNGGU_VERIFIKASI">Menunggu Verifikasi</option>
+          <option value="TERVERIFIKASI">Terverifikasi</option>
+          <option value="DITOLAK">Ditolak</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Nama</th><th>Asal Sekolah</th><th>Pendidikan</th><th>Kontak</th><th>Status</th><th>Tanggal</th></tr>
+            </thead>
+            <tbody id="rTableBody">
+              <tr><td colspan="7"><div class="loading-center"><span class="spinner dark"></span> Memuat…</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="rPagination"></div>
+      </div>
+    </div>
+
+    <div class="cards-2">
+      <div class="card">
+        <h3>👤 Data Profil &amp; Rekening</h3>
+        <p class="desc">Pastikan data rekening benar agar komisi bisa dikirim.</p>
+        <form id="profileForm">
+          <div class="alert" data-alert></div>
+          <div class="field">
+            <label>Email (tidak bisa diubah sendiri)</label>
+            <input class="input" id="pfEmail" disabled />
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Nama Lengkap</label>
+              <input class="input" name="nama_lengkap" />
+              <div class="field-error" data-for="nama_lengkap"></div></div>
+            <div class="field"><label>Nomor WhatsApp</label>
+              <input class="input" name="nomor_wa" />
+              <div class="field-error" data-for="nomor_wa"></div></div>
+            <div class="field"><label>Instagram</label>
+              <input class="input" name="instagram" />
+              <div class="field-error" data-for="instagram"></div></div>
+            <div class="field"><label>Asal Sekolah / Kampus</label>
+              <input class="input" name="asal_institusi" />
+              <div class="field-error" data-for="asal_institusi"></div></div>
+            <div class="field"><label>Bank / E-wallet</label>
+              <input class="input" name="bank_nama" /></div>
+            <div class="field"><label>Nomor Rekening</label>
+              <input class="input" name="bank_rekening" />
+              <div class="field-error" data-for="bank_rekening"></div></div>
+            <div class="field full"><label>Atas Nama</label>
+              <input class="input" name="bank_atasnama" /></div>
+          </div>
+          <button type="submit" class="btn btn-primary">💾 Simpan Profil</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>🔐 Ganti Password</h3>
+        <p class="desc">Gunakan password yang tidak kamu pakai di tempat lain.</p>
+        <form id="pwForm">
+          <div class="alert" data-alert></div>
+          <div class="field">
+            <label>Password Lama</label>
+            <div class="pw-wrap">
+              <input class="input" type="password" id="pwOld" name="password_lama" autocomplete="current-password" />
+              <button type="button" class="pw-toggle" data-pw-toggle="pwOld">👁</button>
+            </div>
+            <div class="field-error" data-for="password_lama"></div>
+          </div>
+          <div class="field">
+            <label>Password Baru</label>
+            <div class="pw-wrap">
+              <input class="input" type="password" id="pwNew" name="password_baru" autocomplete="new-password" />
+              <button type="button" class="pw-toggle" data-pw-toggle="pwNew">👁</button>
+            </div>
+            <div class="hint">Min. 8 karakter, memuat huruf &amp; angka.</div>
+            <div class="field-error" data-for="password_baru"></div>
+          </div>
+          <div class="field">
+            <label>Ulangi Password Baru</label>
+            <input class="input" type="password" name="password_baru2" autocomplete="new-password" />
+            <div class="field-error" data-for="password_baru2"></div>
+          </div>
+          <button type="submit" class="btn btn-primary">🔐 Ubah Password</button>
+        </form>
+
+        <div class="subcard">
+          <h4>📜 Syarat &amp; Ketentuan</h4>
+          <p class="cell-sub" id="dashSyarat">–</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== SUKSES DAFTAR ==================== -->
+  <section id="successView" hidden>
+    <div class="card success-card">
+      <div class="big-check">✓</div>
+      <h1 id="successTitle">Pendaftaran Terkirim!</h1>
+      <p id="successMsg"></p>
+      <div class="credbox" id="successKode" hidden>
+        <span>Kode referral kamu: <b id="successKodeVal"></b></span>
+      </div>
+      <div class="row-actions" style="justify-content:center;margin-top:18px">
+        <button class="btn btn-primary" id="successLogin">Masuk ke Dashboard</button>
+        <a class="btn btn-outline" href="/">Kembali ke Situs</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="aff-footer">
+  <p>© <span id="year"></span> <span data-brand="nama_situs">Widya Nusantara Academy</span> · Rubela UTBK Indonesia</p>
+  <p class="cell-sub">Butuh bantuan? WhatsApp <a id="footWa" target="_blank" rel="noopener">–</a> · <a id="footMail">–</a></p>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/branding.js"></script>
+<script src="/js/affiliate.js"></script>
+</body>
+</html>

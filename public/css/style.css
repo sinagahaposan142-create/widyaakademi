@@ -101,11 +101,15 @@ a { color: inherit; text-decoration: none; }
 .nav { display: flex; align-items: center; justify-content: space-between; height: 68px; }
 .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; color: var(--navy); }
 .brand .logo {
-  width: 40px; height: 40px; border-radius: 11px; flex: none;
+  width: 40px; height: 40px; border-radius: 11px; flex: none; overflow: hidden;
   background: linear-gradient(135deg, var(--navy), var(--blue));
   color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 1.1rem;
   box-shadow: var(--shadow-sm);
 }
+/* Saat admin mengunggah gambar logo, kotak jadi wadah transparan untuk <img> */
+.brand .logo.has-img { background: #fff; }
+.brand .logo img { width: 100%; height: 100%; object-fit: contain; }
+.site-footer .brand .logo.has-img { background: rgba(255, 255, 255, .1); }
 .brand .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
 .brand .brand-text small { font-size: .68rem; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
 .brand .brand-text b { font-size: 1.02rem; }
@@ -310,7 +314,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ---------- Contact / Footer ---------- */
-.contact-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 720px; margin: 0 auto; }
+.contact-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 900px; margin: 0 auto; }
 .contact-card {
   display: flex; align-items: center; gap: 16px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm);
@@ -318,11 +322,13 @@ a { color: inherit; text-decoration: none; }
 .contact-card .ic { width: 50px; height: 50px; border-radius: 12px; display: grid; place-items: center; font-size: 1.4rem; flex: none; }
 .contact-card.wa .ic { background: #dcfce7; color: #16a34a; }
 .contact-card.mail .ic { background: #dbeafe; color: #2563eb; }
+.contact-card.ig .ic { background: #fce7f3; color: #db2777; }
+.contact-card span { word-break: break-word; }
 .contact-card b { color: var(--navy); display: block; }
 .contact-card span { color: var(--muted); font-size: .9rem; }
 
 .site-footer { background: var(--navy); color: #c6d2f0; padding: 44px 0 24px; }
-.site-footer .foot-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 30px; }
+.site-footer .foot-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 30px; }
 .site-footer h4 { color: #fff; margin-bottom: 12px; font-size: 1rem; }
 .site-footer a { color: #c6d2f0; font-size: .92rem; display: block; padding: 3px 0; }
 .site-footer a:hover { color: var(--gold-2); }
@@ -343,6 +349,7 @@ a { color: inherit; text-decoration: none; }
   .hero-card { order: 2; }
   .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .site-footer .foot-grid { grid-template-columns: 1fr 1fr; }
+  .contact-cards { grid-template-columns: 1fr; max-width: 520px; }
 }
 @media (max-width: 640px) {
   .section { padding: 52px 0; }

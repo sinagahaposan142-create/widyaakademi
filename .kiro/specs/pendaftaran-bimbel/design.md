@@ -1,5 +1,17 @@
 # Dokumen Desain: Pendaftaran Bimbel (Widya Akademi)
 
+> **Status: desain awal (v1) — sebagian sudah dilampaui oleh implementasi.**
+>
+> Dokumen ini adalah desain *technology-agnostic* yang dibuat sebelum implementasi.
+> Sistem yang berjalan sekarang sudah berkembang melampaui cakupan di sini:
+> panel admin bersidebar 9 halaman, **program affiliasi dengan kode referral +
+> dashboard affiliator**, branding (logo & favicon) yang dapat diatur dari panel admin,
+> peran admin (Super Admin / Admin), log aktivitas, serta kuota atomik anti-overbooking.
+>
+> Untuk arsitektur, skema basis data, daftar endpoint, dan catatan keamanan yang
+> **sesuai kondisi kode saat ini**, lihat [`README.md`](../../../README.md).
+> Bagian di bawah tetap dipertahankan sebagai catatan keputusan desain awal.
+
 ## Ringkasan (Overview)
 
 Fitur ini adalah sebuah website pendaftaran bimbingan belajar (bimbel) yang menggantikan alur pendaftaran manual berbasis Google Sheets. Website menyediakan **formulir pendaftaran** yang dapat diisi calon siswa/orang tua, sebuah fitur **unggah bukti pembayaran QRIS**, serta **dashboard admin** untuk melihat, memfilter, dan mengelola data pendaftar secara terpusat.
