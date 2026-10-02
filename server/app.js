@@ -373,6 +373,27 @@ const actorAff = (req) => ({
  *  PUBLIK
  * ================================================================== */
 
+/**
+ * Diagnostik routing (tanpa data sensitif). Memastikan rewrite Vercel
+ * meneruskan path asli multi-segmen ke fungsi serverless. Membalas apa yang
+ * dilihat Express sehingga 404 di layer platform mudah dibedakan dari 404
+ * aplikasi. Aman dipublikasikan: hanya memantulkan metadata request.
+ */
+function diagHandler(req, res) {
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    method: req.method,
+    url: req.url,
+    path: req.path,
+    original_pathname: req.headers['x-vercel-original-pathname'] || null,
+    matched: 'express',
+    node: process.version,
+  });
+}
+app.get('/api/_diag/auth/login', diagHandler);
+app.get('/api/_diag', diagHandler);
+
 /** Informasi publik untuk landing page (kuota, biaya, kontak, branding). */
 app.get(
   '/api/info',

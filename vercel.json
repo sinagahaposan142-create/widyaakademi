@@ -1,12 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
+    { "source": "/api", "destination": "/api/index" },
+    { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/affiliasi", "destination": "/affiliasi.html" },
     { "source": "/affiliator", "destination": "/affiliasi.html" }
   ],
   "functions": {
-    "api/[...path].js": {
+    "api/index.js": {
       "maxDuration": 30,
       "memory": 1024
     }
