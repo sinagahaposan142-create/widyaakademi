@@ -198,7 +198,7 @@ Password dibuat otomatis dan ditampilkan sekali.
 
 ## 💻 Menjalankan secara lokal
 
-Prasyarat: **Node.js 20+**. Tanpa env var Turso, aplikasi memakai file lokal
+Prasyarat: **Node.js 22** (sama dengan runtime Vercel). Tanpa env var Turso, aplikasi memakai file lokal
 `data/widya.db` (mode dev).
 
 ```bash
