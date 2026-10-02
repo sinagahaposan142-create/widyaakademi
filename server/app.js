@@ -130,6 +130,38 @@ app.use((req, res, next) => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Diagnostik ringan — TIDAK butuh database.
+ * Didaftarkan sebelum middleware ensureInit agar bisa dipakai memverifikasi
+ * routing & konfigurasi meski Turso belum diset. Tidak membocorkan nilai env.
+ * ------------------------------------------------------------------ */
+function diagHandler(req, res) {
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    method: req.method,
+    url: req.url,
+    path: req.path,
+    matched: 'express',
+    node: process.version,
+    original_pathname: req.headers['x-vercel-original-pathname'] || null,
+    env: {
+      // hanya status true/false, bukan nilainya
+      turso_url: !!(
+        process.env.TURSO_DATABASE_URL ||
+        process.env.LIBSQL_URL ||
+        process.env.DATABASE_URL
+      ),
+      turso_token: !!(process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN),
+      jwt_secret: !!process.env.JWT_SECRET,
+      admin_env: !!(process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD),
+      vercel: !!process.env.VERCEL,
+    },
+  });
+}
+app.get('/api/_diag', diagHandler);
+app.get('/api/_diag/auth/login', diagHandler);
+
+/* ------------------------------------------------------------------ *
  * Pastikan database siap sebelum request API diproses
  * ------------------------------------------------------------------ */
 app.use(async (req, res, next) => {
@@ -372,27 +404,6 @@ const actorAff = (req) => ({
 /* ================================================================== *
  *  PUBLIK
  * ================================================================== */
-
-/**
- * Diagnostik routing (tanpa data sensitif). Memastikan rewrite Vercel
- * meneruskan path asli multi-segmen ke fungsi serverless. Membalas apa yang
- * dilihat Express sehingga 404 di layer platform mudah dibedakan dari 404
- * aplikasi. Aman dipublikasikan: hanya memantulkan metadata request.
- */
-function diagHandler(req, res) {
-  res.set('Cache-Control', 'no-store');
-  res.json({
-    ok: true,
-    method: req.method,
-    url: req.url,
-    path: req.path,
-    original_pathname: req.headers['x-vercel-original-pathname'] || null,
-    matched: 'express',
-    node: process.version,
-  });
-}
-app.get('/api/_diag/auth/login', diagHandler);
-app.get('/api/_diag', diagHandler);
 
 /** Informasi publik untuk landing page (kuota, biaya, kontak, branding). */
 app.get(
