@@ -7,7 +7,38 @@
   const MAX_UPLOAD = 3 * 1024 * 1024;
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 
+  // Fallback operasional tetap membuat kontak & rekening dapat dipakai ketika
+  // API sedang cold-start/bermasalah. Nilai kuota tidak ditebak dari fallback.
+  const FALLBACK_INFO = Object.freeze({
+    biaya: 160000,
+    durasi_program: 5,
+    jumlah_tryout: 6,
+    kuota_total: 100,
+    periode_pendaftaran: '28 September – 25 Oktober 2026',
+    komisi_referral: 10000,
+    bank_nama: 'Bank Neo / Neo Bank',
+    bank_rekening: '5859459250325726',
+    bank_atasnama: 'Haposan Sinaga',
+    kode_unik: '550',
+    wa_kontak: '0895360396759',
+    email_kontak: 'rubelautbk@gmail.com',
+    instagram_kontak: 'rubelaindonesia',
+  });
+
+  const operationalInfo = (raw = {}) => ({
+    ...FALLBACK_INFO,
+    ...raw,
+    bank_nama: raw.bank_nama || FALLBACK_INFO.bank_nama,
+    bank_rekening: raw.bank_rekening || FALLBACK_INFO.bank_rekening,
+    bank_atasnama: raw.bank_atasnama || FALLBACK_INFO.bank_atasnama,
+    kode_unik: raw.kode_unik || FALLBACK_INFO.kode_unik,
+    wa_kontak: raw.wa_kontak || FALLBACK_INFO.wa_kontak,
+    email_kontak: raw.email_kontak || FALLBACK_INFO.email_kontak,
+    instagram_kontak: raw.instagram_kontak || FALLBACK_INFO.instagram_kontak,
+  });
+
   let info = null;
+  let infoLoadFailed = false;
 
   /* ---------------- Tahun & navigasi ---------------- */
   $('#year').textContent = new Date().getFullYear();
@@ -29,12 +60,19 @@
   const setAll = (sel, value) => $$(sel).forEach((el) => (el.textContent = value));
 
   function renderQuota(d) {
-    const sisa = Number(d.kuota_tersisa) || 0;
+    const raw = d?.kuota_tersisa;
+    if (raw == null || raw === '' || !Number.isFinite(Number(raw))) {
+      $('#statSisa').textContent = '–';
+      $('#quotaText').textContent = 'Kuota sedang diperbarui';
+      return;
+    }
+    const sisa = Math.max(0, Number(raw));
     $('#statSisa').textContent = sisa;
     $('#quotaText').textContent = sisa > 0 ? `${sisa} kursi tersisa` : 'Kuota penuh';
   }
 
-  function renderInfo(d) {
+  function renderInfo(raw) {
+    const d = operationalInfo(raw);
     info = d;
     applyBranding(d);
 
@@ -132,9 +170,21 @@
     try {
       const data = await window.WNA.fetchInfo();
       renderInfo(data);
-    } catch {
+    } catch (err) {
+      // Kontak dan rekening statis tetap berfungsi; hanya pendaftaran dinonaktifkan
+      // karena kuota tidak boleh ditebak ketika backend tidak dapat diverifikasi.
+      infoLoadFailed = true;
+      const fallback = operationalInfo();
+      info = fallback;
       applyBranding({ logo_teks: 'W' });
-      $('#quotaText').textContent = 'Gagal memuat data';
+      renderQuota({});
+      const alertBox = $('#formAlert');
+      alertBox.textContent =
+        'Sistem pendaftaran sedang tidak dapat terhubung ke server. Kontak kami tetap dapat digunakan; silakan coba muat ulang beberapa saat lagi.';
+      alertBox.classList.add('show');
+      $('#submitBtn').disabled = true;
+      $('#submitBtn').textContent = 'Server Sedang Diperbarui';
+      console.error('[WNA] Gagal memuat /api/info:', err);
     }
   }
 
@@ -142,11 +192,17 @@
   async function refreshQuota() {
     try {
       const data = await window.WNA.fetchInfo();
-      info = data;
-      renderQuota(data);
-      if (!data.pendaftaran_dibuka) renderInfo(data);
+      const recovered = infoLoadFailed;
+      infoLoadFailed = false;
+      info = operationalInfo(data);
+      // Setelah kegagalan awal, render penuh agar tombol/form dan semua nilai
+      // pulih tanpa meminta pengguna melakukan hard reload.
+      if (recovered || !data.pendaftaran_dibuka) renderInfo(data);
+      else renderQuota(data);
     } catch {
-      /* diam saja — cukup pakai angka terakhir */
+      // Pertahankan state terakhir. Jika belum pernah berhasil, refresh berikutnya
+      // tetap akan mencoba pemulihan penuh.
+      if (!info) infoLoadFailed = true;
     }
   }
 

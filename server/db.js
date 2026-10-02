@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hashPassword, randomToken } from './password.js';
+import { hashPassword, verifyPassword, randomToken } from './password.js';
 
 /*
  * Data layer berbasis libSQL (SQLite-compatible).
@@ -76,10 +76,28 @@ async function createClientLazy() {
   return mod.createClient(authToken ? { url, authToken } : { url });
 }
 
+/** Jalankan statement dengan retry terbatas untuk lock SQLite/libSQL sementara. */
+async function execute(sql, args = []) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      // getClient() di dalam try: lock saat membuka koneksi juga ikut di-retry.
+      const client = await getClient();
+      return await client.execute({ sql, args });
+    } catch (err) {
+      const message = String(err?.message || err);
+      const code = String(err?.code || '');
+      const busy = /SQLITE_(BUSY|LOCKED)/i.test(code) || /database is (busy|locked)/i.test(message);
+      if (!busy || attempt >= 6) throw err;
+      // Jitter mengurangi kemungkinan semua cold start mencoba ulang bersamaan.
+      const delay = 40 * 2 ** attempt + Math.floor(Math.random() * 35);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Jalankan query, kembalikan array baris (objek biasa). */
 export async function q(sql, args = []) {
-  const client = await getClient();
-  const res = await client.execute({ sql, args });
+  const res = await execute(sql, args);
   // libSQL mengembalikan baris dengan prototype null; normalkan ke objek biasa
   // supaya aman dipakai dengan spread/JSON.stringify di seluruh aplikasi.
   return res.rows.map((row) => ({ ...row }));
@@ -87,8 +105,7 @@ export async function q(sql, args = []) {
 
 /** Jalankan perintah tulis, kembalikan { id, changes }. */
 export async function run(sql, args = []) {
-  const client = await getClient();
-  const res = await client.execute({ sql, args });
+  const res = await execute(sql, args);
   return {
     id: res.lastInsertRowid != null ? Number(res.lastInsertRowid) : null,
     changes: Number(res.rowsAffected || 0),
@@ -236,6 +253,10 @@ const COLUMN_MIGRATIONS = [
   ['admins', 'is_active', 'INTEGER NOT NULL DEFAULT 1'],
   ['admins', 'last_login_at', 'TEXT'],
   ['admins', 'updated_at', 'TEXT'],
+  ['admins', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0'],
+  // Versi password: setiap penggantian password mengubah nilai ini sehingga
+  // semua token admin lama (mis. sesi yang dibuka dengan password awal) dicabut.
+  ['admins', 'password_changed_at', 'TEXT'],
 ];
 
 const POST_MIGRATION_INDEXES = [
@@ -249,23 +270,36 @@ async function tableColumns(table) {
   return new Set(rows.map((r) => String(r.name)));
 }
 
+/** @returns {Promise<Set<string>>} kolom yang benar-benar baru ditambahkan ("tabel.kolom") */
 async function applyColumnMigrations() {
   const cache = new Map();
+  const added = new Set();
   for (const [table, column, ddl] of COLUMN_MIGRATIONS) {
     if (!cache.has(table)) cache.set(table, await tableColumns(table));
     const cols = cache.get(table);
     if (cols.has(column)) continue;
+
     try {
       await run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
       cols.add(column);
+      added.add(`${table}.${column}`);
       console.log(`[init] kolom ditambahkan: ${table}.${column}`);
     } catch (err) {
-      // kalau balapan dengan instance lain, kolom mungkin sudah ada -> abaikan
-      if (!/duplicate column/i.test(String(err?.message))) {
-        console.warn(`[init] gagal menambah kolom ${table}.${column}:`, err?.message);
-      }
+      /*
+       * Dua cold start dapat mencoba ALTER yang sama. Jangan menebak dari teks
+       * error (pesan Turso dapat berbeda): baca ulang skema. Hanya anggap sukses
+       * bila kolom memang sudah ada; selain itu hentikan init dengan diagnosis
+       * yang jelas agar query berikutnya tidak gagal sebagai "no such column".
+       */
+      const refreshed = await tableColumns(table);
+      cache.set(table, refreshed);
+      if (refreshed.has(column)) continue;
+      throw new Error(
+        `Migrasi basis data gagal pada ${table}.${column}: ${err?.message || 'kesalahan tidak diketahui'}`
+      );
     }
   }
+  return added;
 }
 
 /* ------------------------------------------------------------------ *
@@ -315,11 +349,20 @@ export const DEFAULT_SETTINGS = {
  */
 const DATA_MIGRATIONS = [
   {
-    id: 'kontak-periode-okt2026',
+    id: 'kontak-rekening-produksi-v2',
     async run() {
+      /*
+       * Pulihkan nilai operasional yang diminta pemilik. Migrasi v2 sengaja
+       * memakai ID baru agar database produksi yang pernah menjalankan migrasi
+       * lama tetap diperbarui. Setelah marker tersimpan, perubahan berikutnya
+       * dari panel admin tidak akan ditimpa pada cold start.
+       */
       await setSetting('email_kontak', 'rubelautbk@gmail.com');
       await setSetting('wa_kontak', '0895360396759');
       await setSetting('instagram_kontak', 'rubelaindonesia');
+      await setSetting('bank_nama', 'Bank Neo / Neo Bank');
+      await setSetting('bank_rekening', '5859459250325726');
+      await setSetting('bank_atasnama', 'Haposan Sinaga');
       await setSetting('periode_pendaftaran', '28 September – 25 Oktober 2026');
       await setSetting('periode_mulai', '2026-09-28');
       await setSetting('periode_selesai', '2026-10-25');
@@ -348,18 +391,86 @@ const DATA_MIGRATIONS = [
   },
 ];
 
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Klaim migrasi secara atomik lewat row settings.
+ * - INSERT ... DO NOTHING menentukan tepat satu pemilik.
+ * - Worker lain menunggu marker menjadi "1", sehingga tidak mulai melayani
+ *   request sambil migrasi data masih berjalan.
+ * - Lock yang ditinggalkan proses mati dapat diambil alih setelah 45 detik.
+ */
+async function claimMigration(key) {
+  const token = `running:${Date.now()}:${randomToken(8)}`;
+  const tryInsert = async () =>
+    (
+      await run(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO NOTHING`,
+        [key, token]
+      )
+    ).changes === 1;
+
+  if (await tryInsert()) return token;
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const value = await getSetting(key);
+    if (value === '1') return null;
+
+    // Pemilik sebelumnya gagal lalu melepas lock (row dihapus) -> klaim ulang.
+    if (value == null) {
+      if (await tryInsert()) return token;
+      await sleep(150);
+      continue;
+    }
+
+    // Function Vercel maksimal hidup 30 detik; lock > 45 detik pasti yatim.
+    const match = /^running:(\d+):/.exec(String(value));
+    const stale = !match || Date.now() - Number(match[1]) > 45_000;
+    if (stale) {
+      const taken = await run(
+        'UPDATE settings SET value = ? WHERE key = ? AND value = ?',
+        [token, key, value]
+      );
+      if (taken.changes === 1) return token;
+    }
+    await sleep(150);
+  }
+
+  throw new Error(`Migrasi "${key}" masih dijalankan instance lain. Silakan coba lagi.`);
+}
+
+async function runMigrationOnce(id, migrate) {
+  const key = `_migrasi_${id}`;
+  const token = await claimMigration(key);
+  if (!token) return;
+
+  try {
+    await migrate();
+    const finished = await run(
+      'UPDATE settings SET value = ? WHERE key = ? AND value = ?',
+      ['1', key, token]
+    );
+    if (finished.changes !== 1) {
+      throw new Error('kepemilikan lock migrasi berubah sebelum selesai');
+    }
+    console.log(`[init] migrasi data selesai: ${id}`);
+  } catch (err) {
+    // Hanya pemilik lock boleh membukanya; instance berikutnya dapat mencoba ulang.
+    await run('DELETE FROM settings WHERE key = ? AND value = ?', [key, token]).catch(
+      () => {}
+    );
+    throw new Error(
+      `Migrasi data "${id}" gagal: ${err?.message || 'kesalahan tidak diketahui'}`
+    );
+  }
+}
+
 async function runDataMigrations() {
   for (const mig of DATA_MIGRATIONS) {
-    const key = `_migrasi_${mig.id}`;
-    const done = await getSetting(key);
-    if (done === '1') continue;
-    try {
-      await mig.run();
-      await setSetting(key, '1');
-      console.log(`[init] migrasi data selesai: ${mig.id}`);
-    } catch (err) {
-      console.warn(`[init] migrasi data "${mig.id}" gagal:`, err?.message);
-    }
+    await runMigrationOnce(mig.id, mig.run);
   }
 }
 
@@ -367,53 +478,143 @@ async function doInit() {
   for (const stmt of SCHEMA_STATEMENTS) {
     await run(stmt);
   }
-  await applyColumnMigrations();
+  const addedColumns = await applyColumnMigrations();
   for (const stmt of POST_MIGRATION_INDEXES) {
     await run(stmt);
+  }
+
+  /*
+   * Database pra-role (sebelum kolom admins.role ada) hanya mengenal satu
+   * tingkat admin dengan hak penuh. Saat kolom role baru saja ditambahkan,
+   * pertahankan hak tersebut: semua admin lama menjadi SUPERADMIN. Ini
+   * dijalankan SEBELUM bootstrap wna.superadmin, sehingga keberadaan akun
+   * bootstrap tidak membuat admin lama kehilangan akses kelola admin/setting.
+   */
+  if (addedColumns.has('admins.role')) {
+    await run('UPDATE admins SET role = ?', [ROLE_SUPERADMIN]);
+    console.log('[init] admin lama (skema pra-role) dipertahankan sebagai SUPERADMIN');
   }
 
   const now = new Date().toISOString();
 
   /*
    * Admin bootstrap.
-   * 1. Jika ADMIN_USERNAME + ADMIN_PASSWORD diset -> authoritative:
-   *    buat/perbarui akun tersebut sebagai SUPERADMIN.
-   * 2. Jika tidak diset dan tabel admins masih kosong -> buat akun bawaan
-   *    memakai hash yang tertanam (password tidak ada di repo).
+   * 1. ADMIN_USERNAME + ADMIN_PASSWORD (bila ada) bersifat authoritative.
+   * 2. Tanpa env, migrasi satu-kali memastikan akun wna.superadmin juga dibuat
+   *    pada DATABASE LAMA yang sudah mempunyai akun `admin`. Versi sebelumnya
+   *    hanya membuat akun baru saat COUNT(admins)=0 sehingga kredensial yang
+   *    diberikan ke pemilik tidak pernah berlaku di Turso produksi.
+   *
+   * Marker disimpan di settings agar password yang kemudian diganti lewat panel
+   * tidak di-reset pada setiap cold start.
    */
   const envUser = (process.env.ADMIN_USERNAME || '').trim();
   const envPass = process.env.ADMIN_PASSWORD || '';
   if (envUser && envPass) {
-    await run(
-      `INSERT INTO admins (username, nama, password_hash, role, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?, ?)
-       ON CONFLICT(username) DO UPDATE SET
-         password_hash = excluded.password_hash,
-         role          = excluded.role,
-         is_active     = 1,
-         updated_at    = excluded.updated_at`,
-      [envUser, 'Administrator', hashPassword(envPass), ROLE_SUPERADMIN, now, now]
+    /*
+     * Env authoritative, tetapi:
+     * - Hash hanya ditulis ulang bila password env TIDAK cocok dengan hash
+     *   tersimpan. Tanpa ini setiap cold start menghasilkan hash (salt) baru,
+     *   mengubah versi password, dan mencabut sesi semua admin env.
+     * - Insert memakai ON CONFLICT agar cold start serentak tidak gagal UNIQUE.
+     */
+    const existing = await one(
+      `SELECT id, username, password_hash FROM admins
+        WHERE lower(username) = lower(?) ORDER BY (username = ?) DESC, id LIMIT 1`,
+      [envUser, envUser]
     );
-    console.log(`[init] Admin (dari env) siap -> username: "${envUser}"`);
-  } else {
-    const jumlahAdmin = await scalar('SELECT COUNT(*) AS c FROM admins');
-    if (jumlahAdmin === 0) {
+
+    if (existing) {
+      const samePassword = await verifyPassword(envPass, existing.password_hash);
+      if (samePassword) {
+        await run(
+          `UPDATE admins
+              SET username = ?, role = ?, is_active = 1, must_change_password = 0
+            WHERE id = ?`,
+          [envUser, ROLE_SUPERADMIN, existing.id]
+        );
+      } else {
+        await run(
+          `UPDATE admins
+              SET username = ?, password_hash = ?, role = ?, is_active = 1,
+                  must_change_password = 0, password_changed_at = ?, updated_at = ?
+            WHERE id = ?`,
+          [envUser, hashPassword(envPass), ROLE_SUPERADMIN, now, now, existing.id]
+        );
+      }
+    } else {
       await run(
-        `INSERT INTO admins (username, nama, password_hash, role, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 1, ?, ?)`,
-        [
-          DEFAULT_ADMIN_USERNAME,
-          'Super Administrator',
-          DEFAULT_ADMIN_HASH,
-          ROLE_SUPERADMIN,
-          now,
-          now,
-        ]
-      );
-      console.log(
-        `[init] Admin bawaan dibuat -> username: "${DEFAULT_ADMIN_USERNAME}" (password hanya diketahui pemilik sistem)`
+        `INSERT INTO admins
+           (username, nama, password_hash, role, is_active, must_change_password,
+            password_changed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?)
+         ON CONFLICT(username) DO UPDATE SET
+           role = excluded.role,
+           is_active = 1,
+           must_change_password = 0`,
+        [envUser, 'Administrator', hashPassword(envPass), ROLE_SUPERADMIN, now, now, now]
       );
     }
+    console.log(`[init] Admin (dari env) siap -> username: "${envUser}"`);
+  } else {
+    await runMigrationOnce('admin-wna-superadmin-v2', async () => {
+      const target = await one(
+        `SELECT id, username, password_hash FROM admins
+          WHERE lower(username) = lower(?) ORDER BY (username = ?) DESC, id LIMIT 1`,
+        [DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_USERNAME]
+      );
+
+      // Pemilik pernah menghapus akun ini dengan sengaja -> jangan dibuat ulang.
+      const pernahDihapus = await one(
+        `SELECT 1 AS ada FROM activity_log
+          WHERE aksi = 'HAPUS_ADMIN' AND lower(detail) = lower(?) LIMIT 1`,
+        [DEFAULT_ADMIN_USERNAME]
+      );
+
+      if (target) {
+        /*
+         * Akun sudah ada (dibuat rilis sebelumnya). Hormati keputusan pemilik:
+         * - password TIDAK ditimpa,
+         * - role & status aktif TIDAK diubah (akun yang sengaja dinonaktifkan /
+         *   diturunkan perannya tidak dihidupkan kembali),
+         * - hanya wajib-ganti yang diaktifkan bila masih memakai password awal.
+         * (Login dengan password awal juga selalu memicu wajib-ganti, lihat
+         *  verifyAdminCredentials, untuk kasus hash beda-salt.)
+         */
+        const stillDefault = target.password_hash === DEFAULT_ADMIN_HASH;
+        await run(
+          `UPDATE admins
+              SET must_change_password = CASE WHEN ? = 1 THEN 1 ELSE must_change_password END,
+                  updated_at = ?
+            WHERE id = ?`,
+          [stillDefault ? 1 : 0, now, target.id]
+        );
+      } else if (pernahDihapus) {
+        console.log(
+          `[init] "${DEFAULT_ADMIN_USERNAME}" pernah dihapus pemilik — tidak dibuat ulang.`
+        );
+      } else {
+        await run(
+          `INSERT INTO admins
+             (username, nama, password_hash, role, is_active, must_change_password,
+              password_changed_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?)
+           ON CONFLICT(username) DO NOTHING`,
+          [
+            DEFAULT_ADMIN_USERNAME,
+            'Super Administrator',
+            DEFAULT_ADMIN_HASH,
+            ROLE_SUPERADMIN,
+            now,
+            now,
+            now,
+          ]
+        );
+      }
+      console.log(
+        `[init] Migrasi akun admin selesai -> username: "${DEFAULT_ADMIN_USERNAME}"`
+      );
+    });
   }
 
   // Pastikan selalu ada minimal satu SUPERADMIN (DB lama semuanya role kosong/ADMIN)
@@ -429,26 +630,27 @@ async function doInit() {
   // Normalkan kolom hasil ALTER TABLE pada baris lama
   await run("UPDATE admins SET role = ? WHERE role IS NULL OR role = ''", [ROLE_ADMIN]);
   await run('UPDATE admins SET is_active = 1 WHERE is_active IS NULL');
+  await run('UPDATE admins SET must_change_password = 0 WHERE must_change_password IS NULL');
 
-  // Secret JWT: pakai env bila ada; jika tidak, buat sekali lalu simpan di DB
-  // supaya konsisten di semua instance serverless (bukan hardcode di repo).
+  // Secret JWT tanpa env dibuat secara atomik. INSERT ... DO NOTHING mencegah
+  // dua cold start menyimpan secret berbeda dan langsung meng-invalidasi token
+  // yang baru diterbitkan instance lain.
   if (!process.env.JWT_SECRET) {
-    const existing = await getSetting('_jwt_secret');
-    if (!existing) {
-      await setSetting('_jwt_secret', randomToken(48));
-      console.warn(
-        '[init] JWT_SECRET belum diset — secret acak dibuat & disimpan di DB. Disarankan set JWT_SECRET di environment.'
-      );
-    }
+    await run(
+      `INSERT INTO settings (key, value) VALUES ('_jwt_secret', ?)
+       ON CONFLICT(key) DO NOTHING`,
+      [randomToken(48)]
+    );
   }
 
-  // Seed pengaturan default (hanya key yang belum ada)
-  const existing = await q('SELECT key FROM settings');
-  const have = new Set(existing.map((r) => r.key));
+  // Seed default juga atomik/idempoten; tidak ada lagi pola SELECT-lalu-INSERT
+  // yang dapat bertabrakan pada cold start serentak.
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
-    if (!have.has(k)) {
-      await run('INSERT INTO settings (key, value) VALUES (?, ?)', [k, v]);
-    }
+    await run(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO NOTHING`,
+      [k, v]
+    );
   }
 
   await runDataMigrations();
@@ -556,6 +758,15 @@ export async function logActivity({
   } catch (err) {
     console.warn('[log] gagal mencatat aktivitas:', err?.message);
   }
+}
+
+/**
+ * True bila password sama dengan password awal (bootstrap) yang dibagikan.
+ * Dipakai untuk menolak "rotasi" yang sebenarnya tetap memakai password awal.
+ */
+export async function isDefaultAdminPassword(plain) {
+  if (typeof plain !== 'string' || !plain) return false;
+  return verifyPassword(plain, DEFAULT_ADMIN_HASH);
 }
 
 export { DEFAULT_ADMIN_USERNAME };

@@ -103,10 +103,29 @@
 .aff-footer p + p { margin-top: 4px; }
 
 @media (max-width: 640px) {
+  .aff-header { padding: 9px 12px; gap: 8px; }
+  .aff-brand { min-width: 0; gap: 8px; }
+  .aff-brand-text { min-width: 0; }
+  .aff-brand-text small {
+    max-width: 145px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .aff-brand-text b { font-size: .9rem; white-space: nowrap; }
+  .aff-header-right { gap: 5px; }
+  .aff-header-right .btn { padding: 6px 10px; font-size: .78rem; }
   .aff-main { padding: 16px 12px 50px; }
   .aff-hero { padding: 24px 20px; border-radius: 16px; }
   .auth-pane { padding: 18px 16px; }
   .kode-card { flex-direction: column; align-items: stretch; }
   .kode-card .btn { width: 100%; }
   .link-row .btn, .link-row .input { width: 100%; flex: none; }
+  .aff-footer { padding-left: 14px; padding-right: 14px; }
+  .aff-footer a { overflow-wrap: anywhere; }
+}
+@media (max-width: 390px) {
+  .aff-brand-text small { display: none; }
+  .aff-brand-text b { font-size: .84rem; }
+  .aff-header .logo { width: 36px; height: 36px; }
+  .aff-header-right .btn { padding: 6px 8px; }
+  .aff-hero-steps > div { width: 100%; border-radius: 12px; }
+  .kode-card .kode-big { font-size: 1.65rem; letter-spacing: 2px; overflow-wrap: anywhere; }
 }

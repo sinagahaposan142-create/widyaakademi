@@ -2,7 +2,17 @@
 (function () {
   'use strict';
 
-  const { $, $$, esc, fmtRp, fmtNum, fmtTanggal, waLink, applyBranding } = window.WNA;
+  const {
+    $,
+    $$,
+    esc,
+    fmtRp,
+    fmtNum,
+    fmtTanggal,
+    waLink,
+    applyBranding,
+    readJsonResponse,
+  } = window.WNA;
 
   const STATUS_LABEL = {
     MENUNGGU_VERIFIKASI: 'Menunggu',
@@ -71,7 +81,7 @@
   /* ---------------- API ---------------- */
   class ApiError extends Error {
     constructor(status, body) {
-      super(body?.error || 'Terjadi kesalahan.');
+      super(body?.error || 'Layanan tidak memberikan detail kesalahan. Silakan muat ulang.');
       this.status = status;
       this.fields = body?.fields || null;
       this.body = body || {};
@@ -94,6 +104,12 @@
       throw new ApiError(0, { error: 'Gagal terhubung ke server. Periksa koneksi internet.' });
     }
 
+    // Endpoint file (CSV/gambar) dikembalikan mentah bila sukses. Jika gagal,
+    // tetap baca body secara defensif agar error Vercel non-JSON dapat didiagnosis.
+    if (opts.raw && res.ok) return res;
+
+    const body = await readJsonResponse(res, `API ${url}`);
+
     /*
      * 401 pada endpoint biasa berarti sesi habis -> paksa kembali ke layar masuk.
      * Untuk endpoint login sendiri, 401 berarti "kredensial salah", jadi pemanggil
@@ -102,37 +118,47 @@
     if (res.status === 401 && !opts.noAuthRedirect) {
       setToken('');
       showLogin();
-      // silentAuth dipakai saat pemeriksaan sesi awal (belum login itu normal)
-      if (!opts.silentAuth) toast('Sesi berakhir. Silakan masuk kembali.', 'err');
-      throw new ApiError(401, { error: 'Sesi berakhir. Silakan masuk kembali.' });
+      if (!opts.silentAuth) toast(body.error || 'Sesi berakhir. Silakan masuk kembali.', 'err');
+      throw new ApiError(401, body);
     }
 
-    const ct = res.headers.get('content-type') || '';
-    if (opts.raw) {
-      if (!res.ok) throw new ApiError(res.status, ct.includes('json') ? await res.json() : {});
-      return res;
+    // Akun wajib ganti password (mis. migrasi berjalan saat panel terbuka):
+    // buka modal rotasi alih-alih hanya menampilkan toast error.
+    if (res.status === 428 && body.code === 'PASSWORD_CHANGE_REQUIRED' && me) {
+      // Setelah rotasi berhasil, muat ulang halaman yang tadi gagal karena 428.
+      forceAdminPasswordChange().then((ok) => {
+        if (ok) reloadCurrent().catch(() => {});
+      });
+      throw new ApiError(428, body);
     }
-    const body = ct.includes('json') ? await res.json().catch(() => ({})) : {};
-    if (!res.ok) throw new ApiError(res.status, body);
+
+    if (!res.ok || body.code === 'INVALID_API_RESPONSE') {
+      throw new ApiError(res.status, body);
+    }
     return body;
   }
 
   /* ---------------- Modal ---------------- */
-  function openModal({ title, body, footer = '', narrow = false }) {
+  function openModal({ title, body, footer = '', narrow = false, locked = false }) {
     $('#modalTitle').textContent = title;
     $('#modalBody').innerHTML = body;
     $('#modalFoot').innerHTML = footer;
     $('#modalFoot').style.display = footer ? '' : 'none';
     $('#modalBox').classList.toggle('narrow', !!narrow);
+    $('#modal').dataset.locked = locked ? '1' : '0';
+    $('#modalClose').hidden = locked;
     $('#modal').classList.add('show');
     document.body.style.overflow = 'hidden';
   }
-  function closeModal() {
+  function closeModal(force = false) {
+    if (!force && $('#modal').dataset.locked === '1') return;
     $('#modal').classList.remove('show');
+    $('#modal').dataset.locked = '0';
+    $('#modalClose').hidden = false;
     document.body.style.overflow = '';
     while (objectUrls.length) URL.revokeObjectURL(objectUrls.pop());
   }
-  $('#modalClose').addEventListener('click', closeModal);
+  $('#modalClose').addEventListener('click', () => closeModal());
   $('#modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') closeModal();
   });
@@ -217,10 +243,111 @@
   /* ================================================================
    *  SESI
    * ================================================================ */
+  let forcingPassword = null;
+  let forcingResolve = null;
+
   function showLogin() {
+    // Tutup paksa modal apa pun (termasuk modal wajib-ganti-password yang
+    // terkunci) agar tidak menutupi layar masuk, dan akhiri alur wajib-ganti.
+    closeModal(true);
+    if (forcingResolve) forcingResolve(false);
+    forcingPassword = null;
     $('#app').hidden = true;
     $('#loginView').hidden = false;
     me = null;
+  }
+
+  /**
+   * Akun bootstrap wajib mengganti password sebelum endpoint admin dibuka.
+   * Modal dikunci agar kredensial awal tidak menjadi akses permanen; pengguna
+   * tetap dapat keluar bila belum siap menggantinya.
+   */
+  function forceAdminPasswordChange() {
+    // Satu modal saja walau beberapa request paralel sama-sama mendapat 428.
+    if (forcingPassword) return forcingPassword;
+    forcingPassword = new Promise((resolve) => {
+      openModal({
+        title: '🔐 Amankan Akun Admin',
+        narrow: true,
+        locked: true,
+        body: `<div class="alert warn show">
+            Ini adalah login pertama dengan password awal. Buat password pribadi
+            sebelum menggunakan panel admin.
+          </div>
+          <form id="forcePasswordForm">
+            <div class="alert" data-alert></div>
+            <div class="field">
+              <label>Password Awal</label>
+              <div class="pw-wrap">
+                <input class="input" type="password" id="forcePwOld" name="password_lama" autocomplete="current-password" />
+                <button type="button" class="pw-toggle" data-pw-toggle="forcePwOld">👁</button>
+              </div>
+              <div class="field-error" data-for="password_lama"></div>
+            </div>
+            <div class="field">
+              <label>Password Baru</label>
+              <div class="pw-wrap">
+                <input class="input" type="password" id="forcePwNew" name="password_baru" autocomplete="new-password" />
+                <button type="button" class="pw-toggle" data-pw-toggle="forcePwNew">👁</button>
+              </div>
+              <div class="hint">Minimal 8 karakter, memuat huruf dan angka. Jangan gunakan password dari akun lain.</div>
+              <div class="field-error" data-for="password_baru"></div>
+            </div>
+            <div class="field">
+              <label>Ulangi Password Baru</label>
+              <input class="input" type="password" name="password_baru2" autocomplete="new-password" />
+              <div class="field-error" data-for="password_baru2"></div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Simpan Password & Buka Dashboard</button>
+          </form>`,
+        footer: '<button class="btn btn-outline" id="forceLogout">Keluar</button>',
+      });
+
+      forcingResolve = (v) => {
+        forcingResolve = null;
+        forcingPassword = null;
+        resolve(v);
+      };
+
+      $('#forceLogout').addEventListener('click', async () => {
+        await doLogout(); // showLogin() menutup modal & me-resolve(false)
+      });
+
+      const form = $('#forcePasswordForm');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearErrors(form);
+        const lama = form.elements.password_lama.value;
+        const baru = form.elements.password_baru.value;
+        const ulang = form.elements.password_baru2.value;
+        if (baru !== ulang) {
+          showFieldErrors(form, { password_baru2: 'Konfirmasi password tidak sama.' });
+          return;
+        }
+
+        const btn = form.querySelector('button[type="submit"]');
+        busy(btn, true, 'Menyimpan…');
+        try {
+          const result = await api('/api/auth/change-password', {
+            method: 'POST',
+            json: { password_lama: lama, password_baru: baru },
+          });
+          // Server menerbitkan token baru (token lama dicabut karena versi
+          // password berubah) — simpan agar header Bearer tetap valid.
+          if (result.token) setToken(result.token);
+          if (me) me.must_change_password = false;
+          closeModal(true);
+          toast(result.message || 'Password berhasil diamankan.', 'ok');
+          forcingResolve?.(true);
+        } catch (err) {
+          if (err.status === 401) return; // showLogin() sudah menangani
+          showFieldErrors(form, err.fields);
+          showAlert(form, err.message, 'error');
+          busy(btn, false);
+        }
+      });
+    });
+    return forcingPassword;
   }
 
   async function showApp(admin) {
@@ -238,6 +365,11 @@
       fillPendidikanFilter();
     } catch {
       siteInfo = null;
+    }
+
+    if (admin.must_change_password) {
+      const changed = await forceAdminPasswordChange();
+      if (!changed) return;
     }
 
     loadedOnce.add('dashboard');
@@ -285,7 +417,8 @@
       if (data.token) setToken(data.token);
       form.reset();
       await showApp(data.admin);
-      toast('Selamat datang, ' + (data.admin.nama || data.admin.username), 'ok');
+      // Bila pengguna memilih "Keluar" di modal wajib-ganti, `me` sudah null.
+      if (me) toast('Selamat datang, ' + (data.admin.nama || data.admin.username), 'ok');
     } catch (err) {
       alertEl.textContent = err.message;
       alertEl.classList.add('show');
@@ -304,8 +437,8 @@
     showLogin();
     toast('Kamu telah keluar.');
   }
-  $('#logoutBtn').addEventListener('click', doLogout);
-  $('#logoutBtn2').addEventListener('click', doLogout);
+  $('#logoutBtn').addEventListener('click', () => doLogout());
+  $('#logoutBtn2').addEventListener('click', () => doLogout());
 
   /* ================================================================
    *  NAVIGASI
@@ -817,7 +950,7 @@
     $('#modalFoot').innerHTML =
       `<button class="btn btn-danger" data-delete="${r.id}">🗑️ Hapus Pendaftar</button>` +
       `<button class="btn btn-outline" data-close>Tutup</button>`;
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
     $('#modalFoot [data-delete]').addEventListener('click', () => deleteReg(r.id, r.nama_lengkap));
 
     // Bukti dimuat lewat fetch berautentikasi (tag <img> biasa tidak mengirim token)
@@ -1126,7 +1259,7 @@
     $('#modalFoot').innerHTML =
       `<button class="btn btn-danger" id="affDelete">🗑️ Hapus Affiliator</button>` +
       `<button class="btn btn-outline" data-close>Tutup</button>`;
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
 
     // --- simpan perubahan ---
     const form = $('#formEditAff');
@@ -1234,6 +1367,19 @@
 
   /** Tampilkan kredensial sekali-pakai dengan tombol salin. */
   function showCredential(title, identitas, password, pesan) {
+    if (!password || typeof password !== 'string') {
+      openModal({
+        title,
+        narrow: true,
+        body:
+          `<div class="alert success show">${esc(pesan || 'Akun berhasil disimpan.')}</div>` +
+          `<p class="cell-sub">Tidak ada password baru yang dibuat pada tindakan ini.</p>`,
+        footer: '<button class="btn btn-primary" data-close>Selesai</button>',
+      });
+      $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
+      return;
+    }
+
     openModal({
       title,
       narrow: true,
@@ -1244,7 +1390,7 @@
            <button class="btn btn-gold btn-xs" id="credCopy">📋 Salin</button></div>`,
       footer: '<button class="btn btn-primary" data-close>Selesai</button>',
     });
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
     $('#credCopy').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(password);
@@ -1297,7 +1443,7 @@
         '<button class="btn btn-outline" data-close>Batal</button>' +
         '<button class="btn btn-primary" id="addAffSubmit">Buat Akun</button>',
     });
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
 
     $('#addAffSubmit').addEventListener('click', async () => {
       const form = $('#formAddAff');
@@ -1396,6 +1542,7 @@
         method: 'POST',
         json: { password_lama: lama, password_baru: baru },
       });
+      if (res.token) setToken(res.token); // token lama dicabut oleh server
       form.reset();
       showAlert(form, res.message, 'success');
       toast('Password berhasil diubah.', 'ok');
@@ -1587,7 +1734,7 @@
         '<button class="btn btn-outline" data-close>Batal</button>' +
         '<button class="btn btn-primary" id="adEditSave">Simpan</button>',
     });
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
 
     $('#adEditSave').addEventListener('click', async () => {
       const form = $('#formAdEdit');
@@ -1603,6 +1750,7 @@
       busy(btn, true);
       try {
         const res = await api('/api/admin/admins/' + a.id, { method: 'PATCH', json: payload });
+        if (res.token) setToken(res.token); // reset password akun sendiri
         if (res.password) {
           showCredential('Password Baru Admin', a.username, res.password, res.message);
         } else {
@@ -1643,7 +1791,7 @@
         '<button class="btn btn-outline" data-close>Batal</button>' +
         '<button class="btn btn-primary" id="adAddSave">Buat Akun</button>',
     });
-    $('#modalFoot [data-close]').addEventListener('click', closeModal);
+    $('#modalFoot [data-close]').addEventListener('click', () => closeModal());
 
     $('#adAddSave').addEventListener('click', async () => {
       const form = $('#formAdAdd');

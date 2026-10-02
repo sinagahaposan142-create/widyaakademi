@@ -94,11 +94,53 @@
     }
   }
 
-  /** Ambil /api/info. Melempar error bila gagal agar pemanggil bisa menangani. */
+  /**
+   * Baca respons API secara defensif.
+   * Vercel dapat mengembalikan halaman HTML/teks saat function gagal sebelum
+   * Express berjalan. Jangan ubah respons seperti itu menjadi pesan kosong;
+   * tampilkan status + request ID yang dapat ditelusuri tanpa membocorkan body.
+   */
+  async function readJsonResponse(res, context = 'API') {
+    const raw = await res.text();
+    let body = null;
+    if (raw) {
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        body = null;
+      }
+    }
+    if (body && typeof body === 'object') return body;
+
+    const requestId = res.headers.get('x-vercel-id') || res.headers.get('x-request-id') || '';
+    const suffix = requestId ? ` ID: ${requestId}.` : '';
+    const message = res.ok
+      ? `${context} mengembalikan respons tidak valid (HTTP ${res.status}).${suffix}`
+      : `Layanan server bermasalah (HTTP ${res.status}). Muat ulang lalu coba kembali.${suffix}`;
+
+    // Body hanya ke console pengembang, dipotong agar halaman error besar tidak
+    // memenuhi memori. Tidak pernah ditampilkan sebagai HTML ke pengguna.
+    console.error(`[WNA] ${context} non-JSON`, {
+      status: res.status,
+      contentType: res.headers.get('content-type'),
+      requestId,
+      preview: raw.slice(0, 300),
+    });
+    return { error: message, code: 'INVALID_API_RESPONSE', request_id: requestId };
+  }
+
+  /** Ambil /api/info. Melempar error rinci bila gagal / respons bukan JSON. */
   async function fetchInfo() {
-    const res = await fetch('/api/info', { headers: { accept: 'application/json' } });
-    if (!res.ok) throw new Error('Gagal memuat informasi situs.');
-    return res.json();
+    const res = await fetch('/api/info', {
+      headers: { accept: 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+    const body = await readJsonResponse(res, 'Informasi situs');
+    if (!res.ok || body.code === 'INVALID_API_RESPONSE') {
+      throw new Error(body.error || `Gagal memuat informasi situs (HTTP ${res.status}).`);
+    }
+    return body;
   }
 
   /** Muat info lalu terapkan branding; mengembalikan info (atau null bila gagal). */
@@ -123,6 +165,7 @@
     waLink,
     setFavicon,
     applyBranding,
+    readJsonResponse,
     fetchInfo,
     initBranding,
   };

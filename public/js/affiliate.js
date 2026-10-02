@@ -2,7 +2,17 @@
 (function () {
   'use strict';
 
-  const { $, $$, esc, fmtRp, fmtNum, fmtTanggal, waLink, applyBranding } = window.WNA;
+  const {
+    $,
+    $$,
+    esc,
+    fmtRp,
+    fmtNum,
+    fmtTanggal,
+    waLink,
+    applyBranding,
+    readJsonResponse,
+  } = window.WNA;
 
   const STATUS_LABEL = {
     MENUNGGU_VERIFIKASI: 'Menunggu',
@@ -50,7 +60,7 @@
 
   class ApiError extends Error {
     constructor(status, body) {
-      super(body?.error || 'Terjadi kesalahan.');
+      super(body?.error || 'Layanan tidak memberikan detail kesalahan. Silakan muat ulang.');
       this.status = status;
       this.fields = body?.fields || null;
       this.body = body || {};
@@ -73,8 +83,10 @@
       throw new ApiError(0, { error: 'Gagal terhubung ke server. Periksa koneksi internet.' });
     }
 
+    if (opts.raw && res.ok) return res;
+    const body = await readJsonResponse(res, `API ${url}`);
+
     if (res.status === 401 || res.status === 403) {
-      const body = await res.json().catch(() => ({}));
       if (!opts.keepSession) {
         setToken('');
         affiliator = null;
@@ -84,13 +96,9 @@
       throw new ApiError(res.status, body);
     }
 
-    const ct = res.headers.get('content-type') || '';
-    if (opts.raw) {
-      if (!res.ok) throw new ApiError(res.status, ct.includes('json') ? await res.json() : {});
-      return res;
+    if (!res.ok || body.code === 'INVALID_API_RESPONSE') {
+      throw new ApiError(res.status, body);
     }
-    const body = ct.includes('json') ? await res.json().catch(() => ({})) : {};
-    if (!res.ok) throw new ApiError(res.status, body);
     return body;
   }
 

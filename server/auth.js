@@ -3,7 +3,7 @@ import {
   one,
   run,
   getSetting,
-  setSetting,
+  isDefaultAdminPassword,
   ROLE_ADMIN,
   ROLE_SUPERADMIN,
 } from './db.js';
@@ -29,11 +29,19 @@ export function resolveJwtSecret() {
     secretPromise = (async () => {
       const fromEnv = (process.env.JWT_SECRET || '').trim();
       if (fromEnv) return fromEnv;
-      let stored = await getSetting('_jwt_secret');
-      if (!stored) {
-        stored = randomToken(48);
-        await setSetting('_jwt_secret', stored);
-      }
+
+      /*
+       * Atomic insert: dua instance serverless yang cold-start bersamaan tidak
+       * boleh membuat secret berbeda. Pemenang pertama menyimpan nilainya;
+       * semua instance kemudian membaca nilai final yang sama dari database.
+       */
+      await run(
+        `INSERT INTO settings (key, value) VALUES ('_jwt_secret', ?)
+         ON CONFLICT(key) DO NOTHING`,
+        [randomToken(48)]
+      );
+      const stored = await getSetting('_jwt_secret');
+      if (!stored) throw new Error('Secret sesi gagal diinisialisasi.');
       return stored;
     })().catch((err) => {
       secretPromise = null;
@@ -111,6 +119,17 @@ export async function verifyAdminCredentials(username, password) {
     }
   }
 
+  /*
+   * Siapa pun yang masuk dengan password awal bersama WAJIB menggantinya,
+   * terlepas dari bentuk hash tersimpan (mis. hash beda-salt hasil "ganti"
+   * ke password yang sama pada rilis lama).
+   */
+  let mustChange = Number(admin.must_change_password || 0) === 1;
+  if (!mustChange && (await isDefaultAdminPassword(String(password)))) {
+    mustChange = true;
+    await run('UPDATE admins SET must_change_password = 1 WHERE id = ?', [admin.id]);
+  }
+
   await run('UPDATE admins SET last_login_at = ? WHERE id = ?', [
     new Date().toISOString(),
     admin.id,
@@ -121,9 +140,16 @@ export async function verifyAdminCredentials(username, password) {
     username: admin.username,
     nama: admin.nama,
     role: admin.role === ROLE_SUPERADMIN ? ROLE_SUPERADMIN : ROLE_ADMIN,
+    must_change_password: mustChange,
+    password_changed_at: admin.password_changed_at || '',
   };
 }
 
+/**
+ * Token admin membawa `pwv` (versi password). Setiap penggantian password
+ * mengubah versi ini, sehingga semua sesi lama — termasuk sesi yang dibuka
+ * dengan password awal — langsung tidak berlaku.
+ */
 export function issueAdminToken(admin) {
   return signToken({
     sub: admin.id,
@@ -131,6 +157,7 @@ export function issueAdminToken(admin) {
     username: admin.username,
     nama: admin.nama,
     role: admin.role,
+    pwv: admin.password_changed_at || '',
   });
 }
 
@@ -156,12 +183,19 @@ export async function requireAdmin(req, res, next) {
   }
 
   const admin = await one(
-    'SELECT id, username, nama, role, is_active FROM admins WHERE id = ?',
+    `SELECT id, username, nama, role, is_active, must_change_password, password_changed_at
+       FROM admins WHERE id = ?`,
     [payload.sub]
   );
   if (!admin || Number(admin.is_active ?? 1) !== 1) {
     clearAuthCookie(res, ADMIN_COOKIE);
     return res.status(401).json({ error: 'Akun admin tidak aktif. Silakan masuk kembali.' });
+  }
+  if (String(payload.pwv ?? '') !== String(admin.password_changed_at || '')) {
+    clearAuthCookie(res, ADMIN_COOKIE);
+    return res
+      .status(401)
+      .json({ error: 'Password akun ini telah diganti. Silakan masuk kembali.' });
   }
 
   req.admin = {
@@ -169,6 +203,8 @@ export async function requireAdmin(req, res, next) {
     username: admin.username,
     nama: admin.nama,
     role: admin.role === ROLE_SUPERADMIN ? ROLE_SUPERADMIN : ROLE_ADMIN,
+    must_change_password: Number(admin.must_change_password || 0) === 1,
+    password_changed_at: admin.password_changed_at || '',
   };
   return next();
 }

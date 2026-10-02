@@ -20,6 +20,7 @@ import {
   hasFile,
   deleteFile,
   logActivity,
+  isDefaultAdminPassword,
   ROLE_ADMIN,
   ROLE_SUPERADMIN,
 } from './db.js';
@@ -141,6 +142,7 @@ app.use(async (req, res, next) => {
     // hanya endpoint API yang dibalas 503 dalam bentuk JSON.
     if (req.path.startsWith('/api/')) {
       return res.status(503).json({
+        code: 'DATABASE_INIT_FAILED',
         error:
           'Basis data belum siap / belum dikonfigurasi. Hubungi administrator (cek TURSO_DATABASE_URL & TURSO_AUTH_TOKEN).',
       });
@@ -937,10 +939,12 @@ app.get(
     );
     const komisiDiperoleh = counts.TERVERIFIKASI * komisiPer;
 
+    const bulanJakarta = todayJakarta().slice(0, 7);
     const bulanIni = await scalar(
       `SELECT COUNT(*) AS c FROM registrations
-        WHERE affiliator_id = ? AND substr(created_at, 1, 7) = ?`,
-      [affId, new Date().toISOString().slice(0, 7)]
+        WHERE affiliator_id = ?
+          AND substr(date(created_at, '+7 hours'), 1, 7) = ?`,
+      [affId, bulanJakarta]
     );
 
     const payouts = await q(
@@ -948,9 +952,9 @@ app.get(
       [affId]
     );
 
-    // Tren 30 hari terakhir untuk grafik kecil di dashboard
+    // Tren memakai tanggal WIB; created_at tersimpan sebagai ISO UTC.
     const tren = await q(
-      `SELECT substr(created_at, 1, 10) AS tanggal, COUNT(*) AS c
+      `SELECT date(created_at, '+7 hours') AS tanggal, COUNT(*) AS c
          FROM registrations
         WHERE affiliator_id = ?
         GROUP BY tanggal ORDER BY tanggal DESC LIMIT 30`,
@@ -1070,7 +1074,13 @@ app.patch(
   '/api/affiliate/profile',
   ah(requireAffiliator),
   ah(async (req, res) => {
-    const { valid, errors, data } = validateAffiliatorProfile(req.body);
+    /*
+     * PATCH harus benar-benar partial. Gabungkan body dengan profil yang sudah
+     * diverifikasi middleware agar mengubah satu field tidak mengosongkan field
+     * lain atau gagal karena nama/WA wajib tidak ikut dikirim.
+     */
+    const merged = { ...req.affiliator, ...(req.body || {}) };
+    const { valid, errors, data } = validateAffiliatorProfile(merged);
     if (!valid) {
       return res.status(400).json({ error: 'Validasi gagal.', fields: errors });
     }
@@ -1195,7 +1205,12 @@ app.post(
     return res.json({
       ok: true,
       token,
-      admin: { username: admin.username, nama: admin.nama, role: admin.role },
+      admin: {
+        username: admin.username,
+        nama: admin.nama,
+        role: admin.role,
+        must_change_password: admin.must_change_password,
+      },
     });
   })
 );
@@ -1239,29 +1254,64 @@ app.post(
         .json({ error: 'Validasi gagal.', fields: { password_lama: 'Password lama salah.' } });
     }
 
-    await run('UPDATE admins SET password_hash = ?, updated_at = ? WHERE id = ?', [
-      hashPassword(String(baru)),
-      new Date().toISOString(),
-      req.admin.id,
-    ]);
+    // "Rotasi" ke password yang sama atau ke password awal bersama tidak sah.
+    if (String(baru) === String(lama) || (await verifyPassword(String(baru), row?.password_hash))) {
+      return res.status(400).json({
+        error: 'Validasi gagal.',
+        fields: { password_baru: 'Password baru harus berbeda dari password lama.' },
+      });
+    }
+    if (await isDefaultAdminPassword(String(baru))) {
+      return res.status(400).json({
+        error: 'Validasi gagal.',
+        fields: { password_baru: 'Password awal bawaan tidak boleh dipakai lagi.' },
+      });
+    }
+
+    const now = new Date().toISOString();
+    await run(
+      `UPDATE admins
+          SET password_hash = ?, must_change_password = 0,
+              password_changed_at = ?, updated_at = ?
+        WHERE id = ?`,
+      [hashPassword(String(baru)), now, now, req.admin.id]
+    );
+
+    // Versi password berubah -> semua token lama dicabut. Terbitkan token baru
+    // khusus untuk sesi yang sedang dipakai agar pemilik tidak ikut ter-logout.
+    const token = await issueAdminToken({ ...req.admin, password_changed_at: now });
+    setAuthCookie(res, ADMIN_COOKIE, token);
+
     await logActivity({
       ...actorAdmin(req),
       aksi: 'GANTI_PASSWORD',
       entitas: 'admin',
       entitasId: req.admin.id,
+      detail: 'sesi lain dicabut',
     });
     return res.json({
       ok: true,
+      token,
       message:
-        'Password berhasil diperbarui. Jika kamu memakai ADMIN_PASSWORD di environment, perbarui juga nilainya agar tidak tertimpa saat deploy berikutnya.',
+        'Password berhasil diperbarui. Semua sesi lain telah dikeluarkan. Jika kamu memakai ADMIN_PASSWORD di environment, perbarui juga nilainya.',
     });
   })
 );
 
 /* ================================================================== *
- *  ADMIN — semua route di bawah ini wajib sesi admin
+ *  ADMIN — semua route di bawah ini wajib sesi admin dan password final
  * ================================================================== */
-app.use('/api/admin', ah(requireAdmin));
+function requireFinalAdminPassword(req, res, next) {
+  if (req.admin?.must_change_password) {
+    return res.status(428).json({
+      code: 'PASSWORD_CHANGE_REQUIRED',
+      error: 'Demi keamanan, ganti password awal sebelum memakai panel admin.',
+    });
+  }
+  return next();
+}
+
+app.use('/api/admin', ah(requireAdmin), requireFinalAdminPassword);
 
 /** Ringkasan dashboard: statistik, tren, affiliator teratas, aktivitas. */
 app.get(
@@ -1282,7 +1332,11 @@ app.get(
 
     const hari = todayJakarta();
     const [hariIni, mingguIni, tanpaBukti, denganReferral] = await Promise.all([
-      scalar('SELECT COUNT(*) AS c FROM registrations WHERE substr(created_at,1,10) = ?', [hari]),
+      scalar(
+        `SELECT COUNT(*) AS c FROM registrations
+          WHERE date(created_at, '+7 hours') = ?`,
+        [hari]
+      ),
       scalar(
         "SELECT COUNT(*) AS c FROM registrations WHERE created_at >= datetime('now','-7 days')"
       ),
@@ -1290,17 +1344,18 @@ app.get(
       scalar('SELECT COUNT(*) AS c FROM registrations WHERE affiliator_id IS NOT NULL'),
     ]);
 
-    // Tren 14 hari (diisi penuh termasuk hari tanpa pendaftar)
+    // Tren 14 hari dalam zona WIB (diisi penuh termasuk hari tanpa pendaftar).
     const trenRows = await q(
-      `SELECT substr(created_at,1,10) AS tanggal, COUNT(*) AS c
+      `SELECT date(created_at, '+7 hours') AS tanggal, COUNT(*) AS c
          FROM registrations
-        WHERE created_at >= datetime('now','-14 days')
+        WHERE created_at >= datetime('now','-15 days')
         GROUP BY tanggal`
     );
     const trenMap = new Map(trenRows.map((r) => [String(r.tanggal), Number(r.c) || 0]));
     const tren = [];
+    const hariJakarta = new Date(`${hari}T12:00:00Z`);
     for (let i = 13; i >= 0; i -= 1) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const d = new Date(hariJakarta.getTime() - i * 86400000).toISOString().slice(0, 10);
       tren.push({ tanggal: d, jumlah: trenMap.get(d) || 0 });
     }
 
@@ -1440,12 +1495,12 @@ function buildRegistrationFilter(query, alias = '') {
 
   const dari = str(query.dari);
   if (/^\d{4}-\d{2}-\d{2}$/.test(dari)) {
-    where.push(`substr(${p}created_at,1,10) >= ?`);
+    where.push(`date(${p}created_at, '+7 hours') >= ?`);
     args.push(dari);
   }
   const sampai = str(query.sampai);
   if (/^\d{4}-\d{2}-\d{2}$/.test(sampai)) {
-    where.push(`substr(${p}created_at,1,10) <= ?`);
+    where.push(`date(${p}created_at, '+7 hours') <= ?`);
     args.push(sampai);
   }
 
@@ -2449,6 +2504,8 @@ app.post(
     const passwordFinal = passwordDiberikan ? req.body.password : randomPassword(14);
     const pwErr = validatePassword(passwordFinal);
     if (pwErr) fields.password = pwErr;
+    else if (await isDefaultAdminPassword(passwordFinal))
+      fields.password = 'Password awal bawaan tidak boleh dipakai.';
 
     if (Object.keys(fields).length) {
       return res.status(400).json({ error: 'Validasi gagal.', fields });
@@ -2557,12 +2614,21 @@ app.patch(
       perubahan.push('password direset');
     }
 
+    if (passwordBaru && (await isDefaultAdminPassword(passwordBaru))) {
+      return res.status(400).json({
+        error: 'Validasi gagal.',
+        fields: { password: 'Password awal bawaan tidak boleh dipakai.' },
+      });
+    }
+
     const now = new Date().toISOString();
     if (passwordBaru) {
+      // password_changed_at baru -> semua sesi admin target dicabut.
       await run(
-        `UPDATE admins SET nama = ?, email = ?, role = ?, is_active = ?, password_hash = ?, updated_at = ?
+        `UPDATE admins SET nama = ?, email = ?, role = ?, is_active = ?, password_hash = ?,
+                must_change_password = 0, password_changed_at = ?, updated_at = ?
           WHERE id = ?`,
-        [nama, email || null, role, aktif ? 1 : 0, hashPassword(passwordBaru), now, id]
+        [nama, email || null, role, aktif ? 1 : 0, hashPassword(passwordBaru), now, now, id]
       );
     } else {
       await run(
@@ -2579,8 +2645,23 @@ app.patch(
       detail: `${target.username}: ${perubahan.join(', ') || 'tanpa perubahan'}`,
     });
 
+    // Bila superadmin mereset password AKUNNYA SENDIRI, versi password berubah
+    // dan token sesinya ikut dicabut. Terbitkan token baru agar ia tidak
+    // ter-logout sebelum sempat membaca password sekali-tampil.
+    let token = null;
+    if (passwordBaru && id === req.admin.id) {
+      token = await issueAdminToken({
+        ...req.admin,
+        nama,
+        role,
+        password_changed_at: now,
+      });
+      setAuthCookie(res, ADMIN_COOKIE, token);
+    }
+
     return res.json({
       ok: true,
+      token,
       password: str(req.body?.reset_password) === '1' ? passwordBaru : null,
       message:
         str(req.body?.reset_password) === '1'
@@ -2792,7 +2873,10 @@ app.use((err, req, res, next) => {
   if (req.path.startsWith('/api/')) {
     return res
       .status(500)
-      .json({ error: 'Terjadi kesalahan pada server. Silakan coba lagi.' });
+      .json({
+        code: 'INTERNAL_SERVER_ERROR',
+        error: 'Terjadi kesalahan pada server. Silakan coba lagi.',
+      });
   }
   return res.status(500).send('Terjadi kesalahan pada server.');
 });

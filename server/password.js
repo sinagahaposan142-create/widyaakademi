@@ -101,11 +101,24 @@ export function randomToken(bytes = 32) {
  * dipakai saat admin mereset password affiliator.
  */
 export function randomPassword(length = 12) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  const bytes = crypto.randomBytes(length);
-  let out = '';
-  for (let i = 0; i < length; i += 1) out += alphabet[bytes[i] % alphabet.length];
-  return out;
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const alphabet = letters + digits;
+  const size = Math.max(8, length);
+  const pick = (set) => set[crypto.randomInt(set.length)];
+
+  // Jamin minimal 1 huruf & 1 angka agar selalu lolos validatePassword();
+  // versi lama kadang menghasilkan password tanpa angka sehingga pembuatan
+  // akun admin/affiliator otomatis gagal secara acak.
+  const chars = [pick(letters), pick(digits)];
+  while (chars.length < size) chars.push(pick(alphabet));
+
+  // Fisher–Yates agar posisi huruf/angka wajib tidak bisa ditebak.
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

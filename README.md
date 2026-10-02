@@ -168,11 +168,23 @@ Klik **Deploy** (atau **Redeploy** bila env var ditambahkan setelah deploy perta
 
 ### Tentang kredensial admin
 
-- **Jika `ADMIN_USERNAME` + `ADMIN_PASSWORD` dikosongkan:** aplikasi membuat satu
-  akun Super Admin bawaan pada inisialisasi pertama. Password-nya **tidak ada di
-  repository** — hanya hash scrypt-nya yang tertanam di `server/db.js`, sehingga
-  tidak bisa dibaca dari kode sumber. Kredensialnya diserahkan terpisah kepada
-  pemilik sistem, lalu sebaiknya segera diganti dari **Pengaturan → Ganti Password**.
+- **Jika `ADMIN_USERNAME` + `ADMIN_PASSWORD` dikosongkan:** aplikasi memastikan
+  akun Super Admin bawaan tersedia melalui migrasi satu-kali, termasuk pada
+  database Turso lama yang sudah mempunyai akun `admin`. Password-nya **tidak ada
+  dalam bentuk teks di repository** — hanya hash scrypt-nya yang tertanam di
+  `server/db.js`. Setelah migrasi ditandai selesai, cold start berikutnya tidak
+  akan menimpa password yang sudah diganti dari **Pengaturan → Ganti Password**.
+  Saat akun bootstrap dipakai pertama kali, seluruh endpoint admin dikunci dan
+  panel mewajibkan pembuatan password pribadi sebelum dashboard dapat dibuka.
+  Setelah password diganti, semua sesi lain akun itu otomatis dikeluarkan.
+- **Catatan upgrade:**
+  - Admin lama dari database versi awal (sebelum ada peran) tetap memiliki hak
+    penuh (Super Admin) setelah upgrade.
+  - Akun `wna.superadmin` yang sudah ada **tidak** diubah peran, status aktif,
+    maupun password-nya oleh migrasi. Akun yang pernah dihapus tidak dibuat ulang
+    selama catatan penghapusannya masih ada di Log Aktivitas. Jika kamu pernah
+    menghapus akun tersebut **lalu** membersihkan log, set `ADMIN_USERNAME` dan
+    `ADMIN_PASSWORD` sebelum upgrade agar migrasi akun bawaan tidak dijalankan.
 - **Jika `ADMIN_PASSWORD` diisi:** nilainya bersifat *authoritative* dan
   menimpa password di database pada setiap cold start. Kalau kamu mengganti
   password dari panel admin, **perbarui juga nilai env var-nya** agar tidak
