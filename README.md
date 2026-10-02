@@ -163,8 +163,22 @@ lalu tambahkan keduanya di **Settings → Environment Variables**.
 Klik **Deploy** (atau **Redeploy** bila env var ditambahkan setelah deploy pertama).
 
 > ⚠️ Setiap kali menambah/mengubah Environment Variables, lakukan **Redeploy**.
-> Jika `TURSO_DATABASE_URL` belum diset, endpoint API membalas pesan yang jelas
-> (bukan crash).
+> Jika `TURSO_DATABASE_URL` belum diset, endpoint API membalas `503` dengan kode
+> `DATABASE_INIT_FAILED` (bukan crash). Begitu env Turso diisi dan project
+> di-redeploy, seluruh API langsung berfungsi.
+
+### Verifikasi cepat setelah deploy
+
+Buka `https://<domain>/api/_diag` di browser. Endpoint ini tidak butuh database
+dan membalas status konfigurasi (tanpa membocorkan nilainya):
+
+```json
+{ "ok": true, "env": { "turso_url": true, "turso_token": true, "jwt_secret": true } }
+```
+
+- Semua `true` → siap. Login admin akan berfungsi.
+- `turso_url`/`turso_token` `false` → isi Environment Variables Turso lalu
+  **Redeploy**. Inilah penyebab umum login gagal dengan pesan 503.
 
 ### Tentang kredensial admin
 
